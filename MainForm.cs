@@ -29,6 +29,7 @@ public sealed class MainForm : Form
     private Label _pageTitle = new();
     private Label _toolsSectionTitle = new();
     private Button? _startupFilterButton;
+    private Button? _startupFeaturedButton;
     private Button? _selectAllButton;
     private StartupManagerForm? _startupForm;
 
@@ -135,7 +136,7 @@ public sealed class MainForm : Form
         AddFeaturedTool("Duplicate Finder", () => AdvancedToolForms.ShowDuplicateFinder(this));
         AddFeaturedTool("Gaming Mode", () => AdvancedToolForms.ShowGaming(this));
         AddFeaturedTool("Windows Debloat", () => AdvancedToolForms.ShowDebloat(this));
-        AddFeaturedTool("Startup Manager", () => ShowPage("Startup"));
+        AddFeaturedTool("Startup Manager", () => LaunchStartupFeatured());
         _main.Controls.Add(_featuredTools);
 
         _filterBar.Dock = DockStyle.Top;
@@ -347,7 +348,16 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleCenter };
         button.FlatAppearance.BorderSize = 1;
         button.Click += (_, _) => launch();
+        if (title == "Startup Manager") _startupFeaturedButton = button;
         _featuredTools.Controls.Add(button);
+    }
+
+    private void LaunchStartupFeatured()
+    {
+        if (_startupFeaturedButton == null) return;
+        _startupFeaturedButton.Text = "Launching Startup...";
+        _startupFeaturedButton.Enabled = false;
+        BeginInvoke(new Action(() => ShowPage("Startup")));
     }
 
     private Button NavButton(string text) => new()
