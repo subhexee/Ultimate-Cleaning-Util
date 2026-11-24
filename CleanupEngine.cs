@@ -162,6 +162,25 @@ internal static class CleanupEngine
     public static Task FlushDnsAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("ipconfig.exe", new[] { "/flushdns" }, progress, token);
 
+    public static Task CleanWindowsUpdateCacheAsync(IProgress<string> progress, CancellationToken token)
+    {
+        const string script = "$ErrorActionPreference = 'Stop'; " +
+            "$services = @('bits', 'wuauserv'); " +
+            "foreach ($name in $services) { try { Stop-Service -Name $name -Force -ErrorAction Stop; " +
+            "Write-Output ('Stopped service: ' + $name); } catch { Write-Output ('Could not stop ' + $name + ': ' + $_.Exception.Message); throw; } } " +
+            "try { $folder = Join-Path $env:windir 'SoftwareDistribution\\Download'; " +
+            "if (Test-Path -LiteralPath $folder) { Get-ChildItem -LiteralPath $folder -Force | Remove-Item -Recurse -Force -ErrorAction Stop; " +
+            "Write-Output 'Windows Update download cache cleared.'; } else { Write-Output 'Windows Update download cache folder not found.'; } } " +
+            "finally { foreach ($name in $services) { try { Start-Service -Name $name -ErrorAction Stop; " +
+            "Write-Output ('Started service: ' + $name); } catch { Write-Output ('WARNING: could not restart ' + $name + ': ' + $_.Exception.Message); } } }";
+        return RunProcessAsync("powershell.exe",
+            new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script },
+            progress, token);
+    }
+
+    public static Task RunDismAnalyzeAsync(IProgress<string> progress, CancellationToken token) =>
+        RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/AnalyzeComponentStore" }, progress, token);
+
     public static Task RunDismCleanupAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/StartComponentCleanup", "/NoRestart" }, progress, token);
 
