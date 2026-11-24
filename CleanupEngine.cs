@@ -1,9 +1,32 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace UltimateCleaningUtility;
 
 internal static class CleanupEngine
 {
+    private const uint SHERB_NOCONFIRMATION = 0x00000001;
+    private const uint SHERB_NOPROGRESSUI = 0x00000002;
+    private const uint SHERB_NOSOUND = 0x00000004;
+
+    [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, uint dwFlags);
+
+    public static Task EmptyRecycleBinAsync(IProgress<string> progress, CancellationToken token) =>
+        Task.Run(() =>
+        {
+            token.ThrowIfCancellationRequested();
+            progress.Report("Emptying the Recycle Bin on all drives. This action is permanent...");
+            var result = SHEmptyRecycleBin(IntPtr.Zero, null,
+                SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
+            if (result < 0)
+                Marshal.ThrowExceptionForHR(result);
+
+            progress.Report(result == 1
+                ? "The Recycle Bin was already empty."
+                : "Recycle Bin emptied successfully. Deleted items cannot be restored from it.");
+        }, token);
+
     public static Task CleanUserTempAsync(IProgress<string> progress, CancellationToken token) =>
         CleanDirectoryAsync(Path.GetTempPath(), progress, token);
 
