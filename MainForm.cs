@@ -37,7 +37,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility V3.3";
+        Text = "Ultimate Cleaning Utility V3.4";
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -46,7 +46,7 @@ public sealed class MainForm : Form
         AddOperations();
         ApplyTheme();
         UpdateSelection();
-        Log("READY", "Ultimate Cleaning Utility V3.2 initialized.");
+        Log("READY", "Ultimate Cleaning Utility V3.4 initialized.");
         Log("INFO", "Tick the tweaks you want, then press Run tweaks. Nothing runs automatically.");
         RefreshDiskSpace();
     }
@@ -96,7 +96,7 @@ public sealed class MainForm : Form
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
         top.Controls.Add(_pageTitle);
         top.Controls.Add(new Label { Text = "A clearer, safer way to maintain Windows.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(2, 42) });
-        var version = new Label { Text = "V3.3  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+        var version = new Label { Text = "V3.4  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
         top.Controls.Add(version);
         _main.Controls.Add(top);
 
@@ -115,13 +115,13 @@ public sealed class MainForm : Form
         _filterBar.WrapContents = false;
         _filterBar.Padding = new Padding(0, 2, 0, 4);
         _filterBar.Margin = new Padding(0);
-        foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Network" })
+        foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Diagnostics", "Network", "Security", "System Information" })
         {
             var filterButton = new Button
             {
                 Name = "tool-filter:" + filter,
                 Text = filter,
-                Width = filter == "Maintenance" ? 112 : 88,
+                Width = filter == "Maintenance" ? 112 : filter == "System Information" ? 142 : filter == "Diagnostics" ? 104 : filter == "Security" ? 88 : 88,
                 Height = 32,
                 Margin = new Padding(0, 0, 8, 0),
                 FlatStyle = FlatStyle.Flat,
@@ -318,6 +318,28 @@ public sealed class MainForm : Form
         AddCard("Repair", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
         AddCard("Repair", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
         AddCard("Maintenance", "Check system drive", "Runs an online scan of the Windows system drive without scheduling an offline repair.", "SCAN", false, CleanupEngine.RunDiskScanAsync);
+        // BleachBit-inspired cleaners: only rebuildable caches and old crash artifacts.
+        AddCard("Caches", "Browser cache", "Clears cache files for Edge, Chrome and Firefox only. Cookies, passwords, history and open sessions are not touched. Close browsers first.", "LOW RISK", false, CleanupEngine.CleanBrowserCachesAsync);
+        AddCard("Cleanup", "Delivery Optimization cache", "Clears Windows peer-to-peer update delivery cache using Microsoft's cleanup cmdlet. Windows can recreate it.", "LOW RISK", false, CleanupEngine.CleanDeliveryOptimizationCacheAsync);
+        AddCard("Cleanup", "Old crash dumps", "Removes crash dump files older than 30 days. Keeps recent dumps that may help diagnose current problems.", "CAUTION", false, CleanupEngine.CleanOldCrashDumpsAsync);
+
+        // Read-only diagnostics and reports.
+        AddCard("Diagnostics", "Disk health & SMART", "Reads Windows disk health, status and capacity information. SMART availability depends on the drive and controller.", "READ ONLY", false, CleanupEngine.CheckDiskHealthAsync);
+        AddCard("Diagnostics", "Battery health report", "Generates a Windows battery report on your Desktop. Useful for laptops; desktop PCs may not have a battery.", "REPORT", false, CleanupEngine.CreateBatteryReportAsync);
+        AddCard("Diagnostics", "Startup apps analyzer", "Lists applications registered to start automatically. Does not disable or change anything.", "READ ONLY", false, CleanupEngine.AnalyzeStartupAppsAsync);
+        AddCard("Diagnostics", "Event log analyzer", "Shows recent critical and error events from the System and Application logs. Does not clear event logs.", "READ ONLY", false, CleanupEngine.AnalyzeEventLogsAsync);
+        AddCard("Diagnostics", "Installed apps inventory", "Lists installed desktop applications from standard Windows uninstall records. Does not uninstall anything.", "READ ONLY", false, CleanupEngine.ListInstalledAppsAsync);
+        AddCard("System Information", "Driver inventory", "Lists third-party driver packages registered with Windows using PnPUtil.", "READ ONLY", false, CleanupEngine.ListDriversAsync);
+        AddCard("System Information", "Windows activation status", "Checks Windows licensing status and displays only the partial product key. Does not expose a full key.", "READ ONLY", false, CleanupEngine.CheckActivationAsync);
+        AddCard("System Information", "System information report", "Creates a detailed MSInfo32 system report on your Desktop.", "REPORT", false, CleanupEngine.CreateSystemInfoReportAsync);
+        AddCard("Network", "Network diagnostics", "Collects IP configuration and tests internet reachability and DNS resolution. Does not reset network settings.", "READ ONLY", false, CleanupEngine.RunNetworkDiagnosticsAsync);
+
+        // Maintenance and security tasks.
+        AddCard("Maintenance", "Optimize drives", "Runs Windows Optimize Drives with the /O option so Windows chooses the appropriate operation for SSDs or HDDs.", "MAINTENANCE", false, CleanupEngine.OptimizeSystemDriveAsync);
+        AddCard("Maintenance", "SSD TRIM status", "Checks whether Windows has TRIM notifications enabled. This is a read-only status check.", "READ ONLY", false, CleanupEngine.CheckTrimStatusAsync);
+        AddCard("Repair", "Create restore point", "Requests a Windows system restore point before major changes. Requires System Protection to be enabled; Windows may limit frequency.", "CAUTION", false, CleanupEngine.CreateRestorePointAsync);
+        AddCard("Security", "Microsoft Defender quick scan", "Starts a Microsoft Defender quick scan. Availability depends on Defender being enabled and not managed by another antivirus.", "SECURITY", false, CleanupEngine.RunDefenderQuickScanAsync);
+        AddCard("Security", "Update Defender signatures", "Requests the latest Microsoft Defender security intelligence updates.", "SECURITY", false, CleanupEngine.UpdateDefenderSignaturesAsync);
     }
 
     private void AddCard(string category, string title, string description, string risk, bool defaultSelected, Func<IProgress<string>, CancellationToken, Task>? action, bool disabled = false)
@@ -362,6 +384,9 @@ public sealed class MainForm : Form
                 "Maintenance" => Equals(card.Tag, "Maintenance"),
                 "Repair" => Equals(card.Tag, "Repair"),
                 "Network" => Equals(card.Tag, "Network"),
+                "Diagnostics" => Equals(card.Tag, "Diagnostics"),
+                "Security" => Equals(card.Tag, "Security"),
+                "System Information" => Equals(card.Tag, "System Information"),
                 _ => true
             };
         }
