@@ -86,7 +86,7 @@ internal sealed class StartupManagerForm : Form
         footer.Controls.Add(_summary);
 
         var refresh = new Button { Text = "Refresh", Width = 100, Height = 36, Anchor = AnchorStyles.Right | AnchorStyles.Top, Location = new Point(690, 13) };
-        refresh.Click += (_, _) => LoadEntries();
+        refresh.Click += async (_, _) => await LoadEntriesAsync();
         footer.Controls.Add(refresh);
 
         _apply.Text = "Run tweaks";
@@ -102,40 +102,62 @@ internal sealed class StartupManagerForm : Form
         footer.Controls.Add(_apply);
         Controls.Add(footer);
 
-        LoadEntries();
+        // Keep header, note and footer visible; the inventory grid fills the space between them.
+        Controls.SetChildIndex(_grid, 0);
+        Controls.SetChildIndex(footer, 1);
+        Controls.SetChildIndex(note, 2);
+        Controls.SetChildIndex(header, 3);
+
+        Shown += async (_, _) => await LoadEntriesAsync();
     }
 
-    private void LoadEntries()
+    private async Task LoadEntriesAsync()
     {
-        _entries.Clear();
-        _grid.Rows.Clear();
-        AddRegistryEntries(RegistryHive.CurrentUser, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\Run");
-        AddRegistryEntries(RegistryHive.CurrentUser, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\RunOnce");
-        AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\Run");
-        AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\RunOnce");
-        AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry32, @"Software\Microsoft\Windows\CurrentVersion\Run");
-        AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry32, @"Software\Microsoft\Windows\CurrentVersion\RunOnce");
-
-        AddStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Current user Startup folder");
-        AddStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup), "All users Startup folder");
-        AddDisabledFolderEntries();
-        AddScheduledTasks();
-        AddReadOnlyServices();
-        AddReadOnlyDrivers();
-
-        foreach (var entry in _entries)
+        if (!_apply.Enabled) return;
+        _apply.Enabled = false;
+        _summary.Text = "Scanning startup locations… please wait";
+        _grid.Enabled = false;
+        try
         {
-            var index = _grid.Rows.Add(entry.Enabled, entry.Name, entry.Type, entry.Location, entry.Command);
-            _grid.Rows[index].Tag = entry;
-            if (entry.ReadOnly)
+            await Task.Run(() =>
             {
-                _grid.Rows[index].Cells[0].ReadOnly = true;
-                _grid.Rows[index].Cells[0].ToolTipText = "Shown for awareness; this entry is not changed by this utility.";
-            }
+                _entries.Clear();
+                AddRegistryEntries(RegistryHive.CurrentUser, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\Run");
+                AddRegistryEntries(RegistryHive.CurrentUser, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\RunOnce");
+                AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\Run");
+                AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry64, @"Software\Microsoft\Windows\CurrentVersion\RunOnce");
+                AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry32, @"Software\Microsoft\Windows\CurrentVersion\Run");
+                AddRegistryEntries(RegistryHive.LocalMachine, RegistryView.Registry32, @"Software\Microsoft\Windows\CurrentVersion\RunOnce");
+                AddStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Current user Startup folder");
+                AddStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup), "All users Startup folder");
+                AddDisabledFolderEntries();
+                AddScheduledTasks();
+                AddReadOnlyServices();
+                AddReadOnlyDrivers();
+            });
         }
-
-        var editable = _entries.Count(x => !x.ReadOnly);
-        _summary.Text = $"{_entries.Count} entries found  •  {editable} manageable  •  Checked entries are enabled";
+        catch (Exception ex)
+        {
+            _entries.Add(StartupEntry.Info($"Startup inventory error: {ex.Message}"));
+        }
+        finally
+        {
+            _grid.Rows.Clear();
+            foreach (var entry in _entries)
+            {
+                var index = _grid.Rows.Add(entry.Enabled, entry.Name, entry.Type, entry.Location, entry.Command);
+                _grid.Rows[index].Tag = entry;
+                if (entry.ReadOnly)
+                {
+                    _grid.Rows[index].Cells[0].ReadOnly = true;
+                    _grid.Rows[index].Cells[0].ToolTipText = "Shown for awareness; this entry is not changed by this utility.";
+                }
+            }
+            var editable = _entries.Count(x => !x.ReadOnly);
+            _summary.Text = $"{_entries.Count} entries found  •  {editable} manageable  •  Checked entries are enabled";
+            _grid.Enabled = true;
+            _apply.Enabled = true;
+        }
     }
 
     private void AddRegistryEntries(RegistryHive hive, RegistryView view, string path)
@@ -192,6 +214,37 @@ internal sealed class StartupManagerForm : Form
         }
     }
 
+    private static string RunPowerShell(string script)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo("powershell.exe")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("-NoProfile");
+        process.StartInfo.ArgumentList.Add("-NonInteractive");
+        process.StartInfo.ArgumentList.Add("-Command");
+        process.StartInfo.ArgumentList.Add(script);
+        if (!process.Start()) throw new InvalidOperationException("Could not start PowerShell.");
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(15000))
+        {
+            try { process.Kill(true); } catch { }
+            throw new TimeoutException("PowerShell startup inventory timed out after 15 seconds.");
+        }
+        var output = outputTask.GetAwaiter().GetResult();
+        var error = errorTask.GetAwaiter().GetResult();
+        if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(output))
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "PowerShell inventory failed." : error.Trim());
+        return output;
+    }
+
     private void AddScheduledTasks()
     {
         const string script = "$ErrorActionPreference='SilentlyContinue'; " +
@@ -200,17 +253,7 @@ internal sealed class StartupManagerForm : Form
             "ConvertTo-Json -Compress";
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("powershell.exe")
-            {
-                Arguments = "-NoProfile -NonInteractive -Command \"" + script.Replace("\"", "\\\"") + "\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            });
-            if (process == null) return;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(12000);
+            var output = RunPowerShell(script);
             if (string.IsNullOrWhiteSpace(output)) return;
             using var doc = JsonDocument.Parse(output);
             var nodes = doc.RootElement.ValueKind == JsonValueKind.Array
@@ -234,17 +277,7 @@ internal sealed class StartupManagerForm : Form
             "Select-Object Name,DisplayName,StartName,State | ConvertTo-Json -Compress";
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("powershell.exe")
-            {
-                Arguments = "-NoProfile -NonInteractive -Command \"" + script.Replace("\"", "\\\"") + "\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            });
-            if (process == null) return;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(12000);
+            var output = RunPowerShell(script);
             if (string.IsNullOrWhiteSpace(output)) return;
             using var doc = JsonDocument.Parse(output);
             var nodes = doc.RootElement.ValueKind == JsonValueKind.Array
@@ -267,17 +300,7 @@ internal sealed class StartupManagerForm : Form
             "Select-Object Name,DisplayName,StartMode,State | ConvertTo-Json -Compress";
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("powershell.exe")
-            {
-                Arguments = "-NoProfile -NonInteractive -Command \"" + script.Replace("\"", "\\\"") + "\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            });
-            if (process == null) return;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(12000);
+            var output = RunPowerShell(script);
             if (string.IsNullOrWhiteSpace(output)) return;
             using var doc = JsonDocument.Parse(output);
             var nodes = doc.RootElement.ValueKind == JsonValueKind.Array
