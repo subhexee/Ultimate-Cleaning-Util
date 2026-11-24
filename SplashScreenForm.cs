@@ -8,23 +8,21 @@ internal sealed class SplashScreenForm : Form
     {
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(560, 300);
+        ClientSize = new Size(560, 330);
         BackColor = Color.FromArgb(15, 22, 34);
         ShowInTaskbar = false;
         TopMost = true;
         DoubleBuffered = true;
+        Icon = Branding.CreateIcon();
 
-        var mark = new Label
+        Controls.Add(new PictureBox
         {
-            Text = "EX",
-            Size = new Size(66, 66),
-            Location = new Point(247, 42),
-            BackColor = Color.FromArgb(30, 184, 126),
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 27, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleCenter
-        };
-        Controls.Add(mark);
+            Image = Branding.Logo,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Size = new Size(132, 132),
+            Location = new Point(214, 8),
+            BackColor = Color.Transparent
+        });
 
         Controls.Add(new Label
         {
@@ -32,7 +30,7 @@ internal sealed class SplashScreenForm : Form
             AutoSize = false,
             Width = 520,
             Height = 42,
-            Location = new Point(20, 127),
+            Location = new Point(20, 145),
             ForeColor = Color.White,
             Font = new Font("Segoe UI", 18, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter
@@ -43,7 +41,7 @@ internal sealed class SplashScreenForm : Form
             AutoSize = false,
             Width = 520,
             Height = 24,
-            Location = new Point(20, 174),
+            Location = new Point(20, 190),
             ForeColor = Color.FromArgb(30, 184, 126),
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter
@@ -54,7 +52,7 @@ internal sealed class SplashScreenForm : Form
             AutoSize = false,
             Width = 520,
             Height = 22,
-            Location = new Point(20, 209),
+            Location = new Point(20, 222),
             ForeColor = Color.FromArgb(151, 166, 185),
             Font = new Font("Segoe UI", 9),
             TextAlign = ContentAlignment.MiddleCenter
@@ -65,7 +63,7 @@ internal sealed class SplashScreenForm : Form
             AutoSize = false,
             Width = 520,
             Height = 18,
-            Location = new Point(20, 255),
+            Location = new Point(20, 267),
             ForeColor = Color.FromArgb(115, 132, 151),
             Font = new Font("Segoe UI", 8, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter

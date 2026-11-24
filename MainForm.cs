@@ -41,6 +41,7 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "Ultimate Cleaning Utility V3.4";
+        Icon = Branding.CreateIcon();
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -62,16 +63,18 @@ public sealed class MainForm : Form
         Controls.Add(_sidebar);
 
         var brand = new Panel { Dock = DockStyle.Top, Height = 82 };
-        var mark = new Label
+        var logo = new PictureBox
         {
-            Text = "EX", Font = new Font("Segoe UI", 17, FontStyle.Bold),
-            ForeColor = Color.White, BackColor = Accent, TextAlign = ContentAlignment.MiddleCenter,
-            Size = new Size(42, 42), Location = new Point(0, 3)
+            Image = Branding.Logo,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Size = new Size(66, 66),
+            Location = new Point(0, 0),
+            BackColor = Color.Transparent
         };
-        brand.Controls.Add(mark);
-        brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(53, 5) });
-        brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(54, 27) });
-        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
+        brand.Controls.Add(logo);
+        brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(73, 5) });
+        brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(74, 27) });
+        brand.Controls.Add(new Label { Text = "BY EXE COMPUTERS  •  V3.4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(74, 47) });
         _sidebar.Controls.Add(brand);
 
         // Helpful shortcuts and EXE COMPUTERS links sit directly above appearance controls.
