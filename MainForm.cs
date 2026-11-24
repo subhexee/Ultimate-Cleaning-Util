@@ -318,10 +318,8 @@ public sealed class MainForm : Form
         if (selected.Count == 0) return;
         var names = string.Join(", ", selected.Select(x => x.OperationTitle));
         var confirmation = $"Run {selected.Count} selected operation(s)?\n\n{names}\n\nSome operations modify Windows caches or system components. Continue?";
-        if (selected.Any(x => x.OperationTitle == "DISM component cleanup"))
-            confirmation += "\n\nIMPORTANT: DISM component cleanup can take several minutes. Please don't hurry, interrupt it, or close the app while it is running. Keep your PC connected to power.";
-        if (selected.Any(x => x.OperationTitle == "DISM RestoreHealth"))
-            confirmation += "\n\nIMPORTANT: DISM RestoreHealth can take a long time and may download repair files. Please be patient and keep your PC connected to power.";
+        if (selected.Any(x => Equals(x.Tag, "Maintenance") || Equals(x.Tag, "Repair")))
+            confirmation += "\n\nWARNING: MAINTENANCE TOOLS WILL TAKE A WHILE TO COMPLETE. PLEASE BE PATIENT.\n\nDo not close the application or interrupt the process unless absolutely necessary. Keep your PC connected to power. Some repair operations may also download files or take considerably longer depending on your system.";
         if (MessageBox.Show(confirmation, "Confirm operations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
 
