@@ -40,7 +40,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility V3.4";
+        Text = "Ultimate Cleaning Utility ReDesigned";
         Icon = Branding.CreateIcon();
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
@@ -50,7 +50,7 @@ public sealed class MainForm : Form
         AddOperations();
         ApplyTheme();
         UpdateSelection();
-        Log("READY", "Ultimate Cleaning Utility V3.4 initialized.");
+        Log("READY", "Ultimate Cleaning Utility ReDesigned initialized.");
         Log("INFO", "Tick the tweaks you want, then press Run tweaks. Nothing runs automatically.");
         RefreshDiskSpace();
     }
@@ -72,9 +72,9 @@ public sealed class MainForm : Form
             BackColor = Color.Transparent
         };
         brand.Controls.Add(logo);
-        brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(73, 5) });
-        brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(74, 27) });
-        brand.Controls.Add(new Label { Text = "BY EXE COMPUTERS  •  V3.4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(74, 47) });
+        brand.Controls.Add(new Label { Text = "ULTIMATE CLEANING", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(73, 5) });
+        brand.Controls.Add(new Label { Text = "UTILITY REDESIGNED", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(74, 27) });
+        brand.Controls.Add(new Label { Text = "VERSION 3.4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(74, 47) });
         _sidebar.Controls.Add(brand);
 
         // Helpful shortcuts and EXE COMPUTERS links sit directly above appearance controls.
