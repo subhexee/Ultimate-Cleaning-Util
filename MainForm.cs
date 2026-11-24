@@ -71,21 +71,37 @@ public sealed class MainForm : Form
         brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
-        var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        foreach (var item in new[] { "Overview", "Startup", "Cleanup", "Repair", "Settings" })
-        {
-            var b = NavButton(item);
-            nav.Controls.Add(b);
-            b.Click += (_, _) => ShowPage(item);
-        }
+        // Keep only the dedicated Startup workspace in the sidebar.
+        var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 56, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        var startupButton = NavButton("Startup");
+        nav.Controls.Add(startupButton);
+        startupButton.Click += (_, _) => ShowPage("Startup");
         _sidebar.Controls.Add(nav);
 
-        var sideBottom = new Panel { Dock = DockStyle.Bottom, Height = 95 };
-        var theme = new Button { Text = "◐   Toggle appearance", Height = 38, Dock = DockStyle.Top, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
+        // Helpful shortcuts and EXE COMPUTERS links sit directly above appearance controls.
+        var sideBottom = new Panel { Dock = DockStyle.Bottom, Height = 248 };
+        var shortcut = new Button { Text = "＋   Add desktop shortcut", Height = 34, Dock = DockStyle.Top, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
+        shortcut.FlatAppearance.BorderSize = 0;
+        shortcut.Click += (_, _) => CreateDesktopShortcut();
+        sideBottom.Controls.Add(shortcut);
+
+        var website = new LinkLabel { Text = "execomputers.in", AutoSize = true, LinkColor = Accent, ActiveLinkColor = Accent, Location = new Point(4, 46), Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        website.LinkClicked += (_, _) => OpenExternal("https://execomputers.in");
+        sideBottom.Controls.Add(website);
+        sideBottom.Controls.Add(new Label { Text = "FOLLOW EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), Location = new Point(4, 75) });
+
+        var instagram = new LinkLabel { Text = "Instagram", AutoSize = true, LinkColor = Accent, ActiveLinkColor = Accent, Location = new Point(4, 98) };
+        instagram.LinkClicked += (_, _) => OpenExternal("https://instagram.com/execomputers");
+        sideBottom.Controls.Add(instagram);
+        var youtube = new LinkLabel { Text = "YouTube", AutoSize = true, LinkColor = Accent, ActiveLinkColor = Accent, Location = new Point(4, 122) };
+        youtube.LinkClicked += (_, _) => OpenExternal("https://youtube.com/@ExeComputers");
+        sideBottom.Controls.Add(youtube);
+
+        var theme = new Button { Text = "◐   Toggle appearance", Height = 38, Dock = DockStyle.Bottom, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
         theme.FlatAppearance.BorderSize = 0;
         theme.Click += (_, _) => { _dark = !_dark; ApplyTheme(); };
         sideBottom.Controls.Add(theme);
-        sideBottom.Controls.Add(new Label { Text = "Made by EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 52) });
+        sideBottom.Controls.Add(new Label { Text = "Made by EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 174) });
         _sidebar.Controls.Add(sideBottom);
 
         _main.Dock = DockStyle.Fill;
@@ -226,6 +242,14 @@ public sealed class MainForm : Form
         _status.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _status.Location = new Point(900, 5);
         consoleHeader.Controls.Add(_status);
+        var enlargeConsole = new Button { Text = "Expand console", Width = 112, Height = 25, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(740, 0), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8) };
+        enlargeConsole.Click += (_, _) =>
+        {
+            _consoleExpanded = !_consoleExpanded;
+            _console.Height = _consoleExpanded ? 390 : 220;
+            enlargeConsole.Text = _consoleExpanded ? "Collapse console" : "Expand console";
+        };
+        consoleHeader.Controls.Add(enlargeConsole);
         _console.Controls.Add(consoleHeader);
 
         _log.Dock = DockStyle.Fill;
@@ -356,26 +380,41 @@ public sealed class MainForm : Form
 
     private void ShowPage(string page)
     {
-        _pageTitle.Text = page;
-        if (page == "Overview" || page == "Settings")
-            ApplyToolFilter("All");
-        else if (page == "Cleanup" || page == "Repair")
-            ApplyToolFilter(page);
-        else
-            ApplyToolFilter("All");
+        if (page != "Startup") return;
+        _pageTitle.Text = "Startup";
+        using var startup = new StartupManagerForm();
+        startup.ShowDialog(this);
+        Log("STARTUP", "Startup manager closed. Refresh it to view any changes made outside the utility.");
+    }
 
-        if (page == "Startup")
+    private bool _consoleExpanded;
+
+    private static void OpenExternal(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { MessageBox.Show($"Could not open the link.\\n\\n{ex.Message}", "Open link", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+    }
+
+    private void CreateDesktopShortcut()
+    {
+        try
         {
-            using var startup = new StartupManagerForm();
-            startup.ShowDialog(this);
-            Log("STARTUP", "Startup manager closed. Refresh it to view any changes made outside the utility.");
-            return;
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var shortcutPath = Path.Combine(desktop, "Ultimate Cleaning Utility.lnk");
+            var shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("Windows Script Host is unavailable.");
+            dynamic shell = Activator.CreateInstance(shellType) ?? throw new InvalidOperationException("Could not create the shortcut service.");
+            dynamic shortcut = shell.CreateShortcut(shortcutPath);
+            shortcut.TargetPath = Application.ExecutablePath;
+            shortcut.WorkingDirectory = AppContext.BaseDirectory;
+            shortcut.Description = "Ultimate Cleaning Utility by EXE COMPUTERS";
+            shortcut.IconLocation = Application.ExecutablePath + ",0";
+            shortcut.Save();
+            MessageBox.Show("Desktop shortcut created successfully.", "EXE COMPUTERS", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-
-        if (page == "Settings")
-            Log("SETTINGS", "Use Toggle appearance in the sidebar to switch themes. All cleanup actions remain manual and opt-in.");
-        else
-            Log("NAV", page == "Overview" ? "Showing all available tools." : $"Showing {page} tools.");
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not create the desktop shortcut.\\n\\n{ex.Message}", "EXE COMPUTERS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void ApplyToolFilter(string filter)
