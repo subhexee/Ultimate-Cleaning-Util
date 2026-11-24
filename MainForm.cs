@@ -41,7 +41,7 @@ public sealed class MainForm : Form
         ApplyTheme();
         UpdateSelection();
         Log("READY", "Ultimate Cleaning Utility V3.1 initialized.");
-        Log("INFO", "No operation runs until you select it and press Run selected.");
+        Log("INFO", "Tick the tweaks you want, then press Run tweaks. Nothing runs automatically.");
         RefreshDiskSpace();
     }
 
@@ -118,6 +118,30 @@ public sealed class MainForm : Form
         _operations.Padding = new Padding(0, 2, 6, 8);
         _main.Controls.Add(_operations);
 
+        // Persistent action bar: selections stay visible while browsing the tools.
+        var actionBar = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 62,
+            Padding = new Padding(12, 8, 12, 8)
+        };
+        _selectionCount.AutoSize = true;
+        _selectionCount.Location = new Point(12, 21);
+        _selectionCount.Font = new Font("Segoe UI", 9, FontStyle.Bold);
+        actionBar.Controls.Add(_selectionCount);
+
+        _runButton.Text = "Run tweaks  →";
+        _runButton.Dock = DockStyle.Right;
+        _runButton.Width = 160;
+        _runButton.Margin = new Padding(0);
+        _runButton.BackColor = Accent;
+        _runButton.ForeColor = Color.White;
+        _runButton.FlatStyle = FlatStyle.Flat;
+        _runButton.FlatAppearance.BorderSize = 0;
+        _runButton.Click += async (_, _) => await RunSelectedAsync();
+        actionBar.Controls.Add(_runButton);
+        _main.Controls.Add(actionBar);
+
         _console.Dock = DockStyle.Bottom;
         _console.Height = 220;
         _console.Padding = new Padding(14, 10, 14, 10);
@@ -163,17 +187,6 @@ public sealed class MainForm : Form
         _cancelButton.Click += (_, _) => _runCts?.Cancel();
         bottom.Controls.Add(_cancelButton);
 
-        _runButton.Text = "Run selected  →";
-        _runButton.Width = 145;
-        _runButton.Height = 34;
-        _runButton.Anchor = AnchorStyles.Right | AnchorStyles.Top;
-        _runButton.Location = new Point(880, 4);
-        _runButton.BackColor = Accent;
-        _runButton.ForeColor = Color.White;
-        _runButton.FlatStyle = FlatStyle.Flat;
-        _runButton.FlatAppearance.BorderSize = 0;
-        _runButton.Click += async (_, _) => await RunSelectedAsync();
-        bottom.Controls.Add(_runButton);
         _console.Controls.Add(bottom);
 
         // Docked controls are laid out in reverse z-order. Keep the fixed
@@ -189,9 +202,10 @@ public sealed class MainForm : Form
 
         // Keep the three top sections above the operation grid's fill area.
         _main.Controls.SetChildIndex(_operations, 0);
-        _main.Controls.SetChildIndex(contentHeader, 1);
-        _main.Controls.SetChildIndex(summary, 2);
-        _main.Controls.SetChildIndex(top, 3);
+        _main.Controls.SetChildIndex(actionBar, 1);
+        _main.Controls.SetChildIndex(contentHeader, 2);
+        _main.Controls.SetChildIndex(summary, 3);
+        _main.Controls.SetChildIndex(top, 4);
     }
 
     private Button NavButton(string text) => new()
@@ -261,7 +275,7 @@ public sealed class MainForm : Form
     private void UpdateSelection()
     {
         var count = _cards.Count(c => c.Selected && !c.Disabled);
-        _selectionCount.Text = count.ToString();
+        _selectionCount.Text = count == 1 ? "1 tweak selected" : $"{count} tweaks selected";
         if (_selectionValue != null) _selectionValue.Text = count.ToString();
         _runButton.Enabled = count > 0 && _runCts == null;
     }
@@ -361,9 +375,18 @@ public sealed class MainForm : Form
         if (control is OperationCard) return;
         if (control is Button b)
         {
-            b.BackColor = _dark ? DarkCard : Color.FromArgb(232, 237, 243);
-            b.ForeColor = _dark ? DarkText : Color.FromArgb(30, 39, 52);
-            b.FlatAppearance.BorderColor = _dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228);
+            if (b == _runButton)
+            {
+                b.BackColor = Accent;
+                b.ForeColor = Color.White;
+                b.FlatAppearance.BorderColor = Accent;
+            }
+            else
+            {
+                b.BackColor = _dark ? DarkCard : Color.FromArgb(232, 237, 243);
+                b.ForeColor = _dark ? DarkText : Color.FromArgb(30, 39, 52);
+                b.FlatAppearance.BorderColor = _dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228);
+            }
         }
         else if (control is RichTextBox) { }
         else if (control is Panel && control != _sidebar && control != _main && control != _console)
