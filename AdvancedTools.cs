@@ -194,7 +194,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         {
             try
             {
-                foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly))
+                foreach (var dir in Directory.GetDirectories(root, "*", System.IO.SearchOption.TopDirectoryOnly))
                 {
                     var folder = Path.GetFileName(dir);
                     if (folder.Equals(_selected.Name, StringComparison.OrdinalIgnoreCase) || (words.Length > 0 && words.All(w => folder.Contains(w, StringComparison.OrdinalIgnoreCase))))
@@ -367,10 +367,10 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_backup)!);
             var data = new GamingBackup { ActivePlan = await RunCommand("powercfg.exe", "/getactivescheme") };
-            data.Values.Add(Capture(@"Software\Microsoft\GameBar", "AutoGameModeEnabled"));
-            data.Values.Add(Capture(@"Software\Microsoft\GameBar", "AllowAutoGameMode"));
-            data.Values.Add(Capture(@"System\GameConfigStore", "GameDVR_Enabled"));
-            data.Values.Add(Capture(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"));
+            data.Values.Add(CaptureValue(@"Software\Microsoft\GameBar", "AutoGameModeEnabled"));
+            data.Values.Add(CaptureValue(@"Software\Microsoft\GameBar", "AllowAutoGameMode"));
+            data.Values.Add(CaptureValue(@"System\GameConfigStore", "GameDVR_Enabled"));
+            data.Values.Add(CaptureValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"));
             File.WriteAllText(_backup, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
             if (_gameMode.Checked)
             {
@@ -416,7 +416,7 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
         }
         catch (Exception ex) { WriteLog("Restore failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Restore settings", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
-    private static SavedValue Capture(string path, string name)
+    private static SavedValue CaptureValue(string path, string name)
     {
         using var key = Registry.CurrentUser.OpenSubKey(path);
         var exists = key?.GetValueNames().Contains(name) == true;
