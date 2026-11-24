@@ -31,7 +31,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility";
+        Text = "Ultimate Cleaning Utility V3.1";
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -40,7 +40,7 @@ public sealed class MainForm : Form
         AddOperations();
         ApplyTheme();
         UpdateSelection();
-        Log("READY", "Ultimate Cleaning Utility V3.0 initialized.");
+        Log("READY", "Ultimate Cleaning Utility V3.1 initialized.");
         Log("INFO", "No operation runs until you select it and press Run selected.");
         RefreshDiskSpace();
     }
@@ -62,7 +62,7 @@ public sealed class MainForm : Form
         brand.Controls.Add(mark);
         brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(53, 5) });
         brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(54, 27) });
-        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 0", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
+        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 1", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
         var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
@@ -70,7 +70,7 @@ public sealed class MainForm : Form
         {
             var b = NavButton(item);
             nav.Controls.Add(b);
-            b.Click += (_, _) => { _pageTitle.Text = item; Log("NAV", $"Opened {item}."); };
+            b.Click += (_, _) => ShowPage(item);
         }
         _sidebar.Controls.Add(nav);
 
@@ -90,7 +90,7 @@ public sealed class MainForm : Form
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
         top.Controls.Add(_pageTitle);
         top.Controls.Add(new Label { Text = "A clearer, safer way to maintain Windows.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(2, 42) });
-        var version = new Label { Text = "V3.0  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+        var version = new Label { Text = "V3.1  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
         top.Controls.Add(version);
         _main.Controls.Add(top);
 
@@ -216,9 +216,29 @@ public sealed class MainForm : Form
         {
             Width = 300, Height = 146, Margin = new Padding(0, 0, 12, 12)
         };
+        card.Tag = category;
         card.SelectionChanged += (_, _) => UpdateSelection();
         _cards.Add(card);
         _operations.Controls.Add(card);
+    }
+
+    private void ShowPage(string page)
+    {
+        _pageTitle.Text = page;
+        foreach (var card in _cards)
+        {
+            card.Visible = page switch
+            {
+                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network"),
+                "Repair" => Equals(card.Tag, "Maintenance"),
+                _ => true
+            };
+        }
+        if (page == "Settings")
+            Log("SETTINGS", "Use Toggle appearance in the sidebar to switch themes. All cleanup actions remain manual and opt-in.");
+        else
+            Log("NAV", $"Showing {page} operations.");
+        _operations.PerformLayout();
     }
 
     private void UpdateSelection()
@@ -237,7 +257,8 @@ public sealed class MainForm : Form
         if (MessageBox.Show($"Run {selected.Count} selected operation(s)?\n\n{names}\n\nSome operations modify Windows caches or system components. Continue?", "Confirm operations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
 
-        _runCts = new CancellationTokenSource();
+        var runCts = new CancellationTokenSource();
+        _runCts = runCts;
         _runButton.Enabled = false;
         _cancelButton.Enabled = true;
         _progress.Value = 0;
@@ -249,13 +270,13 @@ public sealed class MainForm : Form
         {
             for (int i = 0; i < selected.Count; i++)
             {
-                _runCts.Token.ThrowIfCancellationRequested();
+                runCts.Token.ThrowIfCancellationRequested();
                 var card = selected[i];
                 Log("TASK", card.OperationTitle);
                 var progress = new Progress<string>(message => Log("INFO", message));
                 try
                 {
-                    await card.Action!(progress, _runCts.Token);
+                    await card.Action!(progress, runCts.Token);
                     Log("DONE", $"{card.OperationTitle} completed.");
                 }
                 catch (OperationCanceledException) { throw; }
@@ -272,8 +293,8 @@ public sealed class MainForm : Form
         }
         finally
         {
-            _runCts.Dispose();
-            _runCts = null;
+            runCts.Dispose();
+            if (ReferenceEquals(_runCts, runCts)) _runCts = null;
             _cancelButton.Enabled = false;
             _runButton.Enabled = true;
             UpdateSelection();
@@ -309,6 +330,9 @@ public sealed class MainForm : Form
         _main.BackColor = BackColor;
         _console.BackColor = _dark ? DarkPanel : Color.White;
         foreach (Control c in Controls) ThemeControl(c);
+        _sidebar.BackColor = _dark ? Color.FromArgb(18, 25, 37) : Color.FromArgb(235, 239, 244);
+        _main.BackColor = _dark ? DarkBg : Color.FromArgb(245, 247, 250);
+        _console.BackColor = _dark ? DarkPanel : Color.White;
         _log.BackColor = _dark ? Color.FromArgb(10, 15, 23) : Color.FromArgb(242, 245, 248);
         _log.ForeColor = _dark ? Color.FromArgb(185, 205, 220) : Color.FromArgb(45, 57, 70);
         foreach (var card in _cards) card.SetTheme(_dark, DarkCard, Color.White, DarkText, Color.FromArgb(30, 39, 52), DarkMuted, Accent);
@@ -325,8 +349,8 @@ public sealed class MainForm : Form
             b.FlatAppearance.BorderColor = _dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228);
         }
         else if (control is RichTextBox) { }
-        else if (control is Panel)
-            control.BackColor = _dark ? DarkBg : Color.FromArgb(245, 247, 250);
+        else if (control is Panel && control != _sidebar && control != _main && control != _console)
+            control.BackColor = _dark ? DarkPanel : Color.White;
         else if (control is Label l)
             l.ForeColor = _dark ? DarkText : Color.FromArgb(30, 39, 52);
         foreach (Control child in control.Controls) ThemeControl(child);
