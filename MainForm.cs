@@ -72,7 +72,7 @@ public sealed class MainForm : Form
         _sidebar.Controls.Add(brand);
 
         var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        foreach (var item in new[] { "Overview", "Cleanup", "Repair", "Settings" })
+        foreach (var item in new[] { "Overview", "Startup", "Cleanup", "Repair", "Settings" })
         {
             var b = NavButton(item);
             nav.Controls.Add(b);
@@ -85,7 +85,7 @@ public sealed class MainForm : Form
         theme.FlatAppearance.BorderSize = 0;
         theme.Click += (_, _) => { _dark = !_dark; ApplyTheme(); };
         sideBottom.Controls.Add(theme);
-        sideBottom.Controls.Add(new Label { Text = "Made by SubhExe", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 52) });
+        sideBottom.Controls.Add(new Label { Text = "Made by EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 52) });
         _sidebar.Controls.Add(sideBottom);
 
         _main.Dock = DockStyle.Fill;
@@ -363,6 +363,14 @@ public sealed class MainForm : Form
             ApplyToolFilter(page);
         else
             ApplyToolFilter("All");
+
+        if (page == "Startup")
+        {
+            using var startup = new StartupManagerForm();
+            startup.ShowDialog(this);
+            Log("STARTUP", "Startup manager closed. Refresh it to view any changes made outside the utility.");
+            return;
+        }
 
         if (page == "Settings")
             Log("SETTINGS", "Use Toggle appearance in the sidebar to switch themes. All cleanup actions remain manual and opt-in.");
