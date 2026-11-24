@@ -263,8 +263,10 @@ public sealed class MainForm : Form
         AddCard("Caches", "Internet cache", "Clears the current user's legacy Windows INetCache folder.", "LOW RISK", false, CleanupEngine.CleanInternetCacheAsync);
         AddCard("Caches", "DirectX shader cache", "Removes rebuildable DirectX shader cache files. Windows and games recreate them as needed.", "LOW RISK", false, CleanupEngine.CleanShaderCacheAsync);
         AddCard("Cleanup", "Windows error reports", "Removes queued and archived Windows Error Reporting files. Does not affect Windows system files.", "LOW RISK", false, CleanupEngine.CleanWindowsErrorReportsAsync);
+        AddCard("Windows Update", "Windows Update download cache", "Clears downloaded update files after safely stopping and restarting Windows Update services. Updates may need to download again.", "CAUTION", false, CleanupEngine.CleanWindowsUpdateCacheAsync);
         AddCard("Cleanup", "Recycle Bin", "Permanently empties the Recycle Bin on all drives. Review its contents first; this cannot be undone.", "PERMANENT", false, CleanupEngine.EmptyRecycleBinAsync);
         AddCard("Network", "Flush DNS cache", "Clears the local DNS resolver cache. This does not delete personal data.", "SAFE", false, CleanupEngine.FlushDnsAsync);
+        AddCard("Maintenance", "Analyze component store", "Reports whether the Windows component store has cleanup recommendations. Does not modify files.", "DIAGNOSTIC", false, CleanupEngine.RunDismAnalyzeAsync);
         AddCard("Maintenance", "DISM component cleanup", "Cleans up superseded Windows component versions. This can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
         AddCard("Maintenance", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
         AddCard("Maintenance", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
