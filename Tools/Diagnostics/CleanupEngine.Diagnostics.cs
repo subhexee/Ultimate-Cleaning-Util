@@ -49,8 +49,8 @@ internal static partial class CleanupEngine
             "$paths = @('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'," +
             "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'," +
             "'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); " +
-            "foreach ($p in $paths) { Get-ItemProperty $p | Where-Object { $_.DisplayName } | " +
-            "Select-Object DisplayName,DisplayVersion,Publisher } | Sort-Object DisplayName -Unique | " +
+            "Get-ItemProperty -Path $paths | Where-Object { $_.DisplayName } | " +
+            "Select-Object DisplayName,DisplayVersion,Publisher | Sort-Object DisplayName -Unique | " +
             "Format-Table -Wrap -AutoSize | Out-String -Width 220";
         return RunPowerShellAsync(script, progress, token);
     }
