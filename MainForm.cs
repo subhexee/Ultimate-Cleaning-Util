@@ -175,6 +175,23 @@ public sealed class MainForm : Form
         _runButton.Click += async (_, _) => await RunSelectedAsync();
         bottom.Controls.Add(_runButton);
         _console.Controls.Add(bottom);
+
+        // Docked controls are laid out in reverse z-order. Keep the fixed
+        // console header/footer outside the fill area occupied by the log.
+        _console.Controls.SetChildIndex(_log, 0);
+        _console.Controls.SetChildIndex(bottom, 1);
+        _console.Controls.SetChildIndex(consoleHeader, 2);
+
+        // Reserve sidebar and console first; the main workspace fills what remains.
+        Controls.SetChildIndex(_main, 0);
+        Controls.SetChildIndex(_console, 1);
+        Controls.SetChildIndex(_sidebar, 2);
+
+        // Keep the three top sections above the operation grid's fill area.
+        _main.Controls.SetChildIndex(_operations, 0);
+        _main.Controls.SetChildIndex(contentHeader, 1);
+        _main.Controls.SetChildIndex(summary, 2);
+        _main.Controls.SetChildIndex(top, 3);
     }
 
     private Button NavButton(string text) => new()
