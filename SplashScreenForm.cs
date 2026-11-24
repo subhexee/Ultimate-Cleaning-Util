@@ -26,7 +26,7 @@ internal sealed class SplashScreenForm : Form
 
         Controls.Add(new Label
         {
-            Text = "ULTIMATE CLEANING UTILITY",
+            Text = "ULTIMATE CLEANING UTILITY REDESIGNED",
             AutoSize = false,
             Width = 520,
             Height = 42,
@@ -37,7 +37,7 @@ internal sealed class SplashScreenForm : Form
         });
         Controls.Add(new Label
         {
-            Text = "POWERED BY EXE COMPUTERS",
+            Text = "MADE BY EXE COMPUTERS",
             AutoSize = false,
             Width = 520,
             Height = 24,
