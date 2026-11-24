@@ -449,6 +449,7 @@ public bool Selected
         if (_selected == value) return;
         _selected = value;
         _check.Invalidate();
+        Invalidate();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 }
@@ -459,7 +460,8 @@ public bool Selected
         Func<IProgress<string>, CancellationToken, Task>? action, bool disabled)
     {
         OperationTitle = title; IsSafeDefault = selected; Action = action; Disabled = disabled;
-        BorderStyle = BorderStyle.FixedSingle;
+        BorderStyle = BorderStyle.None;
+        DoubleBuffered = true;
         Padding = new Padding(12);
         _category.Text = category.ToUpperInvariant();
         _category.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
@@ -513,6 +515,23 @@ public bool Selected
         _risk.ForeColor = dark ? muted : Color.FromArgb(95, 108, 124);
         _check.BackColor = BackColor;
         _check.Invalidate();
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var outline = _selected
+            ? Color.FromArgb(30, 184, 126)
+            : (BackColor.GetBrightness() < 0.5f
+                ? Color.FromArgb(65, 78, 96)
+                : Color.FromArgb(205, 213, 223));
+        using var pen = new Pen(outline, _selected ? 2.2f : 1.2f);
+        var bounds = ClientRectangle;
+        bounds.Width -= 2;
+        bounds.Height -= 2;
+        e.Graphics.DrawRectangle(pen, bounds);
     }
 }
 
