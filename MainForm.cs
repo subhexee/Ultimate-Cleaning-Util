@@ -15,15 +15,18 @@ public sealed class MainForm : Form
     private readonly Label _spaceLabel = new();
     private readonly ProgressBar _progress = new();
     private readonly Button _runButton = new();
+    private readonly Button _skipButton = new();
     private readonly Button _clearButton = new();
     private readonly Button _cancelButton = new();
     private readonly List<OperationCard> _cards = new();
     private bool _dark = true;
     private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _operationCts;
     private Panel _sidebar = new();
     private Panel _main = new();
     private Panel _console = new();
     private Label _pageTitle = new();
+    private Label _toolsSectionTitle = new();
 
     private readonly Color DarkBg = Color.FromArgb(15, 21, 31);
     private readonly Color DarkPanel = Color.FromArgb(24, 33, 47);
@@ -133,7 +136,8 @@ public sealed class MainForm : Form
         _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
-        contentHeader.Controls.Add(new Label { Text = "Cleanup operations", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) });
+        _toolsSectionTitle = new Label { Text = "All tools", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) };
+        contentHeader.Controls.Add(_toolsSectionTitle);
         contentHeader.Controls.Add(new Label { Text = "Click tweaks to select them, then run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
         var selectAll = new Button { Text = "Select safe tasks", Width = 130, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(790, 10), FlatStyle = FlatStyle.Flat };
         selectAll.Click += (_, _) => { foreach (var c in _cards.Where(x => x.IsSafeDefault)) c.Selected = true; UpdateSelection(); };
@@ -162,13 +166,27 @@ public sealed class MainForm : Form
         var actionButtons = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
-            Width = 292,
+            Width = 424,
             Height = 42,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             Padding = new Padding(0),
             Margin = new Padding(0)
         };
+
+        _skipButton.Text = "Skip current";
+        _skipButton.Width = 120;
+        _skipButton.Height = 36;
+        _skipButton.Margin = new Padding(0, 2, 10, 0);
+        _skipButton.FlatStyle = FlatStyle.Flat;
+        _skipButton.Enabled = false;
+        _skipButton.Click += (_, _) =>
+        {
+            if (_operationCts == null || _operationCts.IsCancellationRequested) return;
+            Log("SKIP", "Skip requested for the current operation. It will stop when it is safe to do so.");
+            _operationCts.Cancel();
+        };
+        actionButtons.Controls.Add(_skipButton);
 
         _clearButton.Text = "Clear tweaks";
         _clearButton.Width = 112;
@@ -333,6 +351,8 @@ public sealed class MainForm : Form
     private void ApplyToolFilter(string filter)
     {
         _activeFilter = filter;
+        if (_toolsSectionTitle != null)
+            _toolsSectionTitle.Text = filter == "All" ? "All tools" : $"{filter} tools";
         foreach (var card in _cards)
         {
             card.Visible = filter switch
@@ -368,6 +388,7 @@ public sealed class MainForm : Form
         _selectionCount.Text = count == 1 ? "1 tweak selected" : $"{count} tweaks selected";
         if (_selectionValue != null) _selectionValue.Text = count.ToString();
         _runButton.Enabled = count > 0 && _runCts == null;
+        _skipButton.Enabled = _operationCts != null && _runCts != null;
     }
 
     private async Task RunSelectedAsync()
@@ -385,12 +406,15 @@ public sealed class MainForm : Form
         _runCts = runCts;
         _runButton.Enabled = false;
         _cancelButton.Enabled = true;
+        _skipButton.Enabled = false;
         _progress.Value = 0;
         _progress.Maximum = selected.Count;
         _status.Text = "Running...";
         Log("START", $"Starting {selected.Count} operation(s).");
 
         var failures = 0;
+        var skipped = 0;
+        var completed = 0;
         try
         {
             for (int i = 0; i < selected.Count; i++)
@@ -399,10 +423,27 @@ public sealed class MainForm : Form
                 var card = selected[i];
                 Log("TASK", card.OperationTitle);
                 var progress = new Progress<string>(message => Log("INFO", message));
+                using var operationCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+                _operationCts = operationCts;
+                _skipButton.Enabled = true;
                 try
                 {
-                    await card.Action!(progress, runCts.Token);
-                    Log("DONE", $"{card.OperationTitle} completed.");
+                    await card.Action!(progress, operationCts.Token);
+                    if (operationCts.IsCancellationRequested && !runCts.IsCancellationRequested)
+                    {
+                        skipped++;
+                        Log("SKIP", $"{card.OperationTitle} was skipped at the user's request.");
+                    }
+                    else
+                    {
+                        completed++;
+                        Log("DONE", $"{card.OperationTitle} completed.");
+                    }
+                }
+                catch (OperationCanceledException) when (!runCts.IsCancellationRequested)
+                {
+                    skipped++;
+                    Log("SKIP", $"{card.OperationTitle} was skipped. Any partial changes are noted above.");
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -410,30 +451,38 @@ public sealed class MainForm : Form
                     failures++;
                     Log("ERROR", $"{card.OperationTitle}: {ex.Message}");
                 }
+                finally
+                {
+                    _operationCts = null;
+                    _skipButton.Enabled = false;
+                }
                 _progress.Value = Math.Min(i + 1, _progress.Maximum);
             }
-            _status.Text = failures == 0 ? "Completed" : "Completed with issues";
-            Log(failures == 0 ? "DONE" : "WARN", failures == 0
-                ? "All selected tweaks completed successfully."
-                : $"Run finished with {failures} operation(s) reporting errors.");
+
+            _status.Text = failures == 0 && skipped == 0 ? "Completed" : "Completed with issues";
+            Log(failures == 0 && skipped == 0 ? "DONE" : "WARN",
+                $"Run finished: {completed} completed, {skipped} skipped, {failures} failed.");
+            var allSuccessful = failures == 0 && skipped == 0;
             MessageBox.Show(
-                failures == 0
+                allSuccessful
                     ? $"All {selected.Count} selected tweaks have been completed successfully."
-                    : $"The run has finished. {selected.Count - failures} operation(s) completed and {failures} operation(s) reported errors. Check the execution log for details.",
-                failures == 0 ? "All tweaks completed" : "Tweaks completed with issues",
+                    : $"Run finished. {completed} operation(s) completed, {skipped} skipped, and {failures} failed. Check the execution log for details.",
+                allSuccessful ? "All tweaks completed" : "Tweaks completed with issues",
                 MessageBoxButtons.OK,
-                failures == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                allSuccessful ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (OperationCanceledException)
         {
             _status.Text = "Cancelled";
-            Log("WARN", "Execution cancelled. The current operation may have completed partially.");
+            Log("WARN", "Run cancelled. The current operation may have completed partially; remaining operations were not started.");
         }
         finally
         {
+            _operationCts = null;
             runCts.Dispose();
             if (ReferenceEquals(_runCts, runCts)) _runCts = null;
             _cancelButton.Enabled = false;
+            _skipButton.Enabled = false;
             _runButton.Enabled = true;
             UpdateSelection();
             RefreshDiskSpace();
