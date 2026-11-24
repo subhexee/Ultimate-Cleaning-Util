@@ -13,7 +13,7 @@
     <RootNamespace>UltimateCleaningUtility</RootNamespace>
     <Version>3.4.0</Version>
     <Authors>EXE COMPUTERS</Authors>
-    <Product>Ultimate Cleaning Utility</Product>
-    <Description>Safe Windows cleanup, diagnostics and maintenance utility by EXE COMPUTERS.</Description>
+    <Product>Ultimate Cleaning Utility ReDesigned</Product>
+    <Description>Ultimate Cleaning Utility ReDesigned — a Windows cleanup, diagnostics and maintenance utility. Made by EXE COMPUTERS.</Description>
   </PropertyGroup>
 </Project>
