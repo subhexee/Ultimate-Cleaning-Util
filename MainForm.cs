@@ -175,6 +175,24 @@ public sealed class MainForm : Form
         _runButton.Click += async (_, _) => await RunSelectedAsync();
         bottom.Controls.Add(_runButton);
         _console.Controls.Add(bottom);
+
+        // WinForms docks controls in reverse z-order. Keep the fixed header/footer
+        // above the fill controls so the log cannot cover the action buttons.
+        _console.Controls.SetChildIndex(_log, 0);
+        _console.Controls.SetChildIndex(bottom, 1);
+        _console.Controls.SetChildIndex(consoleHeader, 2);
+
+        // Reserve the sidebar and execution console before allowing the main
+        // workspace to fill the remaining client area.
+        Controls.SetChildIndex(_main, 0);
+        Controls.SetChildIndex(_console, 1);
+        Controls.SetChildIndex(_sidebar, 2);
+
+        // Keep the operation grid as the fill control after the three top sections.
+        _main.Controls.SetChildIndex(_operations, 0);
+        _main.Controls.SetChildIndex(contentHeader, 1);
+        _main.Controls.SetChildIndex(summary, 2);
+        _main.Controls.SetChildIndex(top, 3);
     }
 
     private Button NavButton(string text) => new()
