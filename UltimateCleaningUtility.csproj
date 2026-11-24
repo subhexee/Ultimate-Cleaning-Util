@@ -8,7 +8,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>UltimateCleaningUtility</AssemblyName>
     <RootNamespace>UltimateCleaningUtility</RootNamespace>
-    <Version>3.0.0</Version>
+    <Version>3.1.0</Version>
     <Authors>SubhExe</Authors>
     <Product>Ultimate Cleaning Utility</Product>
     <Description>Safe Windows cleanup and maintenance utility by SubhExe.</Description>
