@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace UltimateCleaningUtility;
 
 internal static partial class CleanupEngine
@@ -6,7 +8,12 @@ internal static partial class CleanupEngine
         Task.Run(() =>
         {
             var browserProcesses = new[] { "chrome", "msedge", "firefox" };
-            var running = browserProcesses.Where(name => Process.GetProcessesByName(name).Length > 0).ToArray();
+            var running = browserProcesses.Where(name =>
+            {
+                var processes = Process.GetProcessesByName(name);
+                try { return processes.Length > 0; }
+                finally { foreach (var process in processes) process.Dispose(); }
+            }).ToArray();
             if (running.Length > 0)
                 throw new InvalidOperationException($"Close these browsers before clearing their caches: {string.Join(", ", running)}. This cleaner never removes cookies, passwords, history or sessions.");
 
