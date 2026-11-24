@@ -183,8 +183,8 @@ public sealed class MainForm : Form
         _toolsSectionTitle = new Label { Text = "All tools", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) };
         contentHeader.Controls.Add(_toolsSectionTitle);
         contentHeader.Controls.Add(new Label { Text = "Click tweaks to select them, then run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
-        var selectAll = new Button { Text = "Select safe tasks", Width = 130, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(790, 10), FlatStyle = FlatStyle.Flat };
-        selectAll.Click += (_, _) => { foreach (var c in _cards.Where(x => x.IsSafeDefault)) c.Selected = true; UpdateSelection(); };
+        var selectAll = new Button { Name = "select-all-tools", Text = "Select all", Width = 112, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(808, 10), FlatStyle = FlatStyle.Flat };
+        selectAll.Click += (_, _) => ToggleVisibleSelection(selectAll);
         contentHeader.Controls.Add(selectAll);
         _main.Controls.Add(contentHeader);
 
@@ -495,6 +495,21 @@ public sealed class MainForm : Form
 
         RefreshFilterButtonStyles();
         _operations.PerformLayout();
+    }
+
+    private void ToggleVisibleSelection(Button button)
+    {
+        // Only cards in the active category are affected; the separate Startup
+        // manager is intentionally not part of this selection control.
+        var visibleCards = _cards.Where(card => card.Visible && !card.Disabled && card.Action != null).ToList();
+        if (visibleCards.Count == 0) return;
+
+        var selectAll = visibleCards.Any(card => !card.Selected);
+        foreach (var card in visibleCards)
+            card.Selected = selectAll;
+
+        button.Text = selectAll ? "Deselect all" : "Select all";
+        UpdateSelection();
     }
 
     private void RefreshFilterButtonStyles()
