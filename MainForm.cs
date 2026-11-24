@@ -106,7 +106,7 @@ public sealed class MainForm : Form
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
         contentHeader.Controls.Add(new Label { Text = "Cleanup operations", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) });
-        contentHeader.Controls.Add(new Label { Text = "Select only the tasks you want to run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
+        contentHeader.Controls.Add(new Label { Text = "Click tweaks to select them, then run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
         var selectAll = new Button { Text = "Select safe tasks", Width = 130, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(790, 10), FlatStyle = FlatStyle.Flat };
         selectAll.Click += (_, _) => { foreach (var c in _cards.Where(x => x.IsSafeDefault)) c.Selected = true; UpdateSelection(); };
         contentHeader.Controls.Add(selectAll);
@@ -425,7 +425,8 @@ public sealed class MainForm : Form
 
 internal sealed class OperationCard : Panel
 {
-    private readonly CheckBox _check = new();
+    private readonly Panel _check = new();
+    private bool _selected;
     private readonly Label _category = new();
     private readonly Label _title = new();
     private readonly Label _description = new();
@@ -442,8 +443,14 @@ internal sealed class OperationCard : Panel
     System.ComponentModel.DesignerSerializationVisibility.Hidden)]
 public bool Selected
 {
-    get => _check.Checked;
-    set => _check.Checked = value;
+    get => _selected;
+    set
+    {
+        if (_selected == value) return;
+        _selected = value;
+        _check.Invalidate();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
 }
 
 
@@ -464,16 +471,23 @@ public bool Selected
         _description.AutoEllipsis = true;
         _risk.Text = risk; _risk.Font = new Font("Segoe UI", 7, FontStyle.Bold);
         _risk.Location = new Point(12, 111); _risk.AutoSize = true;
-        _check.Text = "";
-        _check.AutoSize = false;
+        _selected = selected;
         _check.Size = new Size(24, 24);
-        _check.Checked = selected;
-        _check.Enabled = !disabled;
         _check.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _check.Location = new Point(260, 9);
-        _check.FlatStyle = FlatStyle.Standard;
-        _check.Cursor = Cursors.Hand;
-        _check.CheckedChanged += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
+        _check.BackColor = Color.Transparent;
+        _check.Cursor = disabled ? Cursors.Default : Cursors.Hand;
+        _check.Enabled = !disabled;
+        _check.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var box = new Rectangle(4, 4, 16, 16);
+            using var fill = new SolidBrush(_selected ? Color.FromArgb(30, 184, 126) : BackColor);
+            using var border = new Pen(Color.White, 1.8f);
+            e.Graphics.FillRectangle(fill, box);
+            e.Graphics.DrawRectangle(border, box);
+        };
+        _check.Click += (_, _) => ToggleSelection();
         Controls.AddRange(new Control[] { _category, _title, _description, _risk, _check });
 
         // Clicking the card's text or empty space toggles its visible checkbox.
@@ -486,7 +500,7 @@ public bool Selected
     private void ToggleSelection()
     {
         if (!Disabled && _check.Enabled)
-            _check.Checked = !_check.Checked;
+            Selected = !Selected;
     }
 
     public void SetTheme(bool dark, Color darkCard, Color lightCard, Color darkText, Color lightText, Color muted, Color accent)
@@ -497,8 +511,8 @@ public bool Selected
         _title.ForeColor = ForeColor;
         _description.ForeColor = dark ? muted : Color.FromArgb(95, 108, 124);
         _risk.ForeColor = dark ? muted : Color.FromArgb(95, 108, 124);
-        _check.ForeColor = ForeColor;
         _check.BackColor = BackColor;
+        _check.Invalidate();
     }
 }
 
