@@ -32,7 +32,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility V3.1";
+        Text = "Ultimate Cleaning Utility V3.2";
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -41,7 +41,7 @@ public sealed class MainForm : Form
         AddOperations();
         ApplyTheme();
         UpdateSelection();
-        Log("READY", "Ultimate Cleaning Utility V3.1 initialized.");
+        Log("READY", "Ultimate Cleaning Utility V3.2 initialized.");
         Log("INFO", "Tick the tweaks you want, then press Run tweaks. Nothing runs automatically.");
         RefreshDiskSpace();
     }
@@ -63,7 +63,7 @@ public sealed class MainForm : Form
         brand.Controls.Add(mark);
         brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(53, 5) });
         brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(54, 27) });
-        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 1", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
+        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 2", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
         var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
@@ -91,7 +91,7 @@ public sealed class MainForm : Form
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
         top.Controls.Add(_pageTitle);
         top.Controls.Add(new Label { Text = "A clearer, safer way to maintain Windows.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(2, 42) });
-        var version = new Label { Text = "V3.1  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+        var version = new Label { Text = "V3.2  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
         top.Controls.Add(version);
         _main.Controls.Add(top);
 
@@ -261,6 +261,7 @@ public sealed class MainForm : Form
         AddCard("Temporary files", "Windows temp", "Removes eligible files from the Windows temporary folder. Requires administrator access.", "LOW RISK", true, CleanupEngine.CleanWindowsTempAsync);
         AddCard("Caches", "Thumbnail cache", "Removes rebuildable Explorer thumbnail databases. Windows recreates them.", "LOW RISK", true, CleanupEngine.CleanThumbnailCacheAsync);
         AddCard("Caches", "Internet cache", "Clears the current user's legacy Windows INetCache folder.", "LOW RISK", false, CleanupEngine.CleanInternetCacheAsync);
+        AddCard("Cleanup", "Recycle Bin", "Permanently empties the Recycle Bin on all drives. Review its contents first; this cannot be undone.", "PERMANENT", false, CleanupEngine.EmptyRecycleBinAsync);
         AddCard("Network", "Flush DNS cache", "Clears the local DNS resolver cache. This does not delete personal data.", "SAFE", false, CleanupEngine.FlushDnsAsync);
         AddCard("Maintenance", "DISM component cleanup", "Runs Microsoft's component-store cleanup operation. It can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
         AddCard("Maintenance", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "MAINTENANCE", false, CleanupEngine.RunSfcAsync);
@@ -286,7 +287,7 @@ public sealed class MainForm : Form
         {
             card.Visible = page switch
             {
-                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network"),
+                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network") || Equals(card.Tag, "Cleanup"),
                 "Repair" => Equals(card.Tag, "Maintenance"),
                 _ => true
             };
