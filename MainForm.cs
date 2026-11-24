@@ -8,6 +8,7 @@ public sealed class MainForm : Form
 {
     private readonly FlowLayoutPanel _operations = new();
     private readonly FlowLayoutPanel _filterBar = new();
+    private readonly FlowLayoutPanel _featuredTools = new();
     private string _activeFilter = "All";
     private readonly RichTextBox _log = new();
     private readonly Label _status = new();
@@ -124,6 +125,19 @@ public sealed class MainForm : Form
         summary.Controls.Add(safeCard);
         _main.Controls.Add(summary);
 
+        _featuredTools.Dock = DockStyle.Top;
+        _featuredTools.Height = 48;
+        _featuredTools.FlowDirection = FlowDirection.LeftToRight;
+        _featuredTools.WrapContents = false;
+        _featuredTools.Padding = new Padding(0, 1, 0, 3);
+        _featuredTools.Margin = new Padding(0);
+        AddFeaturedTool("App Uninstaller", () => AdvancedToolForms.ShowUninstaller(this));
+        AddFeaturedTool("Duplicate Finder", () => AdvancedToolForms.ShowDuplicateFinder(this));
+        AddFeaturedTool("Gaming Mode", () => AdvancedToolForms.ShowGaming(this));
+        AddFeaturedTool("Windows Debloat", () => AdvancedToolForms.ShowDebloat(this));
+        AddFeaturedTool("Startup Manager", () => ShowPage("Startup"));
+        _main.Controls.Add(_featuredTools);
+
         _filterBar.Dock = DockStyle.Top;
         _filterBar.Height = 44;
         _filterBar.FlowDirection = FlowDirection.LeftToRight;
@@ -149,19 +163,6 @@ public sealed class MainForm : Form
             _filterBar.Controls.Add(filterButton);
         }
 
-        var separator = new Label
-        {
-            Text = "|",
-            AutoSize = false,
-            Width = 18,
-            Height = 30,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.Gray,
-            Font = new Font("Segoe UI", 12, FontStyle.Regular),
-            Margin = new Padding(0, 0, 6, 0)
-        };
-        _filterBar.Controls.Add(separator);
-
         _startupFilterButton = new Button
         {
             Name = "startup-tool",
@@ -180,7 +181,7 @@ public sealed class MainForm : Form
             _startupFilterButton.Enabled = false;
             BeginInvoke(new Action(() => ShowPage("Startup")));
         };
-        _filterBar.Controls.Add(_startupFilterButton);
+        // Startup Manager is shown with the featured tools above category filters.
         _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
@@ -333,8 +334,20 @@ public sealed class MainForm : Form
         _main.Controls.SetChildIndex(actionBar, 1);
         _main.Controls.SetChildIndex(contentHeader, 2);
         _main.Controls.SetChildIndex(_filterBar, 3);
-        _main.Controls.SetChildIndex(summary, 4);
-        _main.Controls.SetChildIndex(top, 5);
+        _main.Controls.SetChildIndex(_featuredTools, 4);
+        _main.Controls.SetChildIndex(summary, 5);
+        _main.Controls.SetChildIndex(top, 6);
+    }
+
+    private void AddFeaturedTool(string title, Action launch)
+    {
+        var button = new Button { Text = title, Width = title == "Startup Manager" ? 142 : 132, Height = 38,
+            Margin = new Padding(0, 0, 8, 0), FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), Cursor = Cursors.Hand,
+            TextAlign = ContentAlignment.MiddleCenter };
+        button.FlatAppearance.BorderSize = 1;
+        button.Click += (_, _) => launch();
+        _featuredTools.Controls.Add(button);
     }
 
     private Button NavButton(string text) => new()
@@ -440,7 +453,7 @@ public sealed class MainForm : Form
         {
             if (_startupFilterButton != null)
             {
-                _startupFilterButton.Text = "Startup";
+                _startupFilterButton.Text = "Startup Manager";
                 _startupFilterButton.Enabled = true;
             }
         }
@@ -527,6 +540,15 @@ public sealed class MainForm : Form
 
     private void RefreshFilterButtonStyles()
     {
+        foreach (Control control in _featuredTools.Controls)
+        {
+            if (control is Button featured)
+            {
+                featured.BackColor = _dark ? DarkCard : Color.FromArgb(232, 237, 243);
+                featured.ForeColor = _dark ? DarkText : Color.FromArgb(30, 39, 52);
+                featured.FlatAppearance.BorderColor = _dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228);
+            }
+        }
         foreach (Control control in _filterBar.Controls)
         {
             if (control is not Button button) continue;
