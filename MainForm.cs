@@ -345,7 +345,18 @@ internal sealed class OperationCard : Panel
     public bool IsSafeDefault { get; }
     public bool Disabled { get; }
     public Func<IProgress<string>, CancellationToken, Task>? Action { get; }
-    public bool Selected { get => _check.Checked; set => _check.Checked = value; }
+    
+
+[System.ComponentModel.Browsable(false)]
+[System.ComponentModel.DesignerSerializationVisibility(
+    System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+public bool Selected
+{
+    get => _check.Checked;
+    set => _check.Checked = value;
+}
+
+
 
     public OperationCard(string category, string title, string description, string risk, bool selected,
         Func<IProgress<string>, CancellationToken, Task>? action, bool disabled)
