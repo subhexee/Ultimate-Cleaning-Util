@@ -6,9 +6,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Content Include="Assets\EXEComputersLogo.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <AssemblyName>UltimateCleaningUtility</AssemblyName>
     <RootNamespace>UltimateCleaningUtility</RootNamespace>
     <Version>3.4.0</Version>
@@ -16,4 +13,9 @@
     <Product>Ultimate Cleaning Utility ReDesigned</Product>
     <Description>Ultimate Cleaning Utility ReDesigned — a Windows cleanup, diagnostics and maintenance utility. Made by EXE COMPUTERS.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Assets\EXEComputersLogo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>
