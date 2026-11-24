@@ -173,9 +173,12 @@ internal static class CleanupEngine
             "Write-Output 'Windows Update download cache cleared.'; } else { Write-Output 'Windows Update download cache folder not found.'; } } " +
             "finally { foreach ($name in $services) { try { Start-Service -Name $name -ErrorAction Stop; " +
             "Write-Output ('Started service: ' + $name); } catch { Write-Output ('WARNING: could not restart ' + $name + ': ' + $_.Exception.Message); } } }";
+        // Do not kill this PowerShell process mid-flight: its finally block must
+        // restart BITS and Windows Update even if the user presses Cancel.
+        token.ThrowIfCancellationRequested();
         return RunProcessAsync("powershell.exe",
             new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script },
-            progress, token);
+            progress, CancellationToken.None);
     }
 
     public static Task RunDismAnalyzeAsync(IProgress<string> progress, CancellationToken token) =>
