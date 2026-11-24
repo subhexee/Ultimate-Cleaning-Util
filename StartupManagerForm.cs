@@ -121,6 +121,7 @@ internal sealed class StartupManagerForm : Form
         AddDisabledFolderEntries();
         AddScheduledTasks();
         AddReadOnlyServices();
+        AddReadOnlyDrivers();
 
         foreach (var entry in _entries)
         {
@@ -258,6 +259,40 @@ internal sealed class StartupManagerForm : Form
             }
         }
         catch (Exception ex) { _entries.Add(StartupEntry.Info($"Automatic service inventory unavailable: {ex.Message}")); }
+    }
+
+    private void AddReadOnlyDrivers()
+    {
+        const string script = "Get-CimInstance Win32_SystemDriver | Where-Object { $_.StartMode -in @('Boot','System','Auto') } | " +
+            "Select-Object Name,DisplayName,StartMode,State | ConvertTo-Json -Compress";
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo("powershell.exe")
+            {
+                Arguments = "-NoProfile -NonInteractive -Command \\"" + script.Replace("\\\"", "\\\\\\\"") + "\\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            });
+            if (process == null) return;
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(12000);
+            if (string.IsNullOrWhiteSpace(output)) return;
+            using var doc = JsonDocument.Parse(output);
+            var nodes = doc.RootElement.ValueKind == JsonValueKind.Array
+                ? doc.RootElement.EnumerateArray().ToArray()
+                : new[] { doc.RootElement };
+            foreach (var node in nodes)
+            {
+                var display = node.TryGetProperty("DisplayName", out var d) ? d.GetString() ?? "" : "";
+                var name = node.TryGetProperty("Name", out var n) ? n.GetString() ?? "" : "";
+                var mode = node.TryGetProperty("StartMode", out var m) ? m.GetString() ?? "" : "";
+                var state = node.TryGetProperty("State", out var s) ? s.GetString() ?? "" : "";
+                _entries.Add(StartupEntry.ReadOnlyService(display, name, $"{mode} driver — {state}", "Startup driver (read-only)"));
+            }
+        }
+        catch (Exception ex) { _entries.Add(StartupEntry.Info($"Startup driver inventory unavailable: {ex.Message}")); }
     }
 
     private async Task ApplyChangesAsync()
@@ -429,8 +464,8 @@ internal sealed class StartupEntry
     public static StartupEntry Task(string name, bool enabled, string location, string command) =>
         new() { Name = name, Enabled = enabled, Type = "Logon / boot task", Location = location, Command = command, Kind = StartupEntryKind.ScheduledTask };
 
-    public static StartupEntry ReadOnlyService(string name, string service, string state) =>
-        new() { Name = name, Enabled = true, Type = "Automatic service (read-only)", Location = "Windows Services", Command = $"{service} — {state}", Kind = StartupEntryKind.Service, ReadOnly = true };
+    public static StartupEntry ReadOnlyService(string name, string service, string state, string type = "Automatic service (read-only)") =>
+        new() { Name = name, Enabled = true, Type = type, Location = "Windows Services / Drivers", Command = $"{service} — {state}", Kind = StartupEntryKind.Service, ReadOnly = true };
 
     public static StartupEntry Info(string message) =>
         new() { Name = message, Enabled = false, Type = "Information", Location = "", Command = "", Kind = StartupEntryKind.ReadOnly, ReadOnly = true };
