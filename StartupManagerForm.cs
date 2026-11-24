@@ -26,7 +26,7 @@ internal sealed class StartupManagerForm : Form
         BackColor = Color.FromArgb(17, 24, 36);
         ForeColor = Color.FromArgb(235, 241, 248);
 
-        var header = new Panel { Dock = DockStyle.Top, Height = 104, Padding = new Padding(20, 14, 20, 10) };
+        var header = new Panel { Height = 104, Padding = new Padding(20, 14, 20, 10), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
         header.BackColor = Color.FromArgb(24, 34, 49);
         header.Controls.Add(new Label
         {
@@ -47,8 +47,8 @@ internal sealed class StartupManagerForm : Form
 
         var note = new Label
         {
-            Dock = DockStyle.Top,
             Height = 58,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             Padding = new Padding(18, 10, 18, 8),
             Text = "Checked = currently enabled. Untick entries you want to disable, then choose Run tweaks. Registry and Startup-folder entries can be restored here. Logon/boot tasks can be toggled with Task Scheduler. Services and drivers are shown for awareness only and are not bulk-disabled.",
             ForeColor = Color.FromArgb(205, 215, 226),
@@ -56,7 +56,7 @@ internal sealed class StartupManagerForm : Form
         };
         Controls.Add(note);
 
-        _grid.Dock = DockStyle.Fill;
+        _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _grid.AllowUserToAddRows = false;
         _grid.AllowUserToDeleteRows = false;
         _grid.RowHeadersVisible = false;
@@ -80,7 +80,7 @@ internal sealed class StartupManagerForm : Form
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Command", HeaderText = "Command / target", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, ReadOnly = true });
         Controls.Add(_grid);
 
-        var footer = new Panel { Dock = DockStyle.Bottom, Height = 64, Padding = new Padding(16, 10, 16, 10), BackColor = Color.FromArgb(24, 34, 49) };
+        var footer = new Panel { Height = 64, Padding = new Padding(16, 10, 16, 10), BackColor = Color.FromArgb(24, 34, 49), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
         _summary.AutoSize = true;
         _summary.Location = new Point(18, 22);
         footer.Controls.Add(_summary);
@@ -102,11 +102,18 @@ internal sealed class StartupManagerForm : Form
         footer.Controls.Add(_apply);
         Controls.Add(footer);
 
-        // Keep header, note and footer visible; the inventory grid fills the space between them.
-        Controls.SetChildIndex(_grid, 0);
-        Controls.SetChildIndex(footer, 1);
-        Controls.SetChildIndex(note, 2);
-        Controls.SetChildIndex(header, 3);
+        // Explicit bounds prevent the grid from covering the title or note.
+        void LayoutStartupPanels()
+        {
+            header.SetBounds(0, 0, ClientSize.Width, 104);
+            note.SetBounds(0, 104, ClientSize.Width, 58);
+            footer.SetBounds(0, ClientSize.Height - 64, ClientSize.Width, 64);
+            _grid.SetBounds(0, 162, ClientSize.Width, Math.Max(80, ClientSize.Height - 226));
+            _apply.Left = footer.ClientSize.Width - _apply.Width - 18;
+            refresh.Left = _apply.Left - refresh.Width - 10;
+        }
+        LayoutStartupPanels();
+        Resize += (_, _) => LayoutStartupPanels();
 
         Shown += async (_, _) => await LoadEntriesAsync();
     }
@@ -355,7 +362,7 @@ internal sealed class StartupManagerForm : Form
         }
         finally { _apply.Enabled = true; }
 
-        LoadEntries();
+        await LoadEntriesAsync();
         if (errors.Count == 0)
             MessageBox.Show(this, "Startup changes applied. Disabled items are retained so you can re-enable them here.", "Startup Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
         else
