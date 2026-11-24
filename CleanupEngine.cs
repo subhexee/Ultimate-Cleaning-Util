@@ -45,6 +45,32 @@ internal static class CleanupEngine
         return CleanDirectoryAsync(path, progress, token);
     }
 
+    public static Task CleanShaderCacheAsync(IProgress<string> progress, CancellationToken token)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "D3DSCache");
+        return CleanDirectoryAsync(path, progress, token);
+    }
+
+    public static Task CleanWindowsErrorReportsAsync(IProgress<string> progress, CancellationToken token) =>
+        Task.Run(() =>
+        {
+            var roots = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Windows", "WER", "ReportQueue"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Windows", "WER", "ReportArchive")
+            };
+            foreach (var path in roots)
+            {
+                token.ThrowIfCancellationRequested();
+                if (Directory.Exists(path))
+                {
+                    progress.Report($"Cleaning Windows Error Reporting: {path}");
+                    DeleteContents(path, progress, token);
+                }
+                else progress.Report($"Report folder not found; skipped: {path}");
+            }
+        }, token);
+
     private static Task CleanDirectoryAsync(string path, IProgress<string> progress, CancellationToken token) =>
         Task.Run(() =>
         {
@@ -139,8 +165,17 @@ internal static class CleanupEngine
     public static Task RunDismCleanupAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/StartComponentCleanup", "/NoRestart" }, progress, token);
 
+    public static Task RunDismRestoreHealthAsync(IProgress<string> progress, CancellationToken token) =>
+        RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/RestoreHealth", "/NoRestart" }, progress, token);
+
     public static Task RunSfcAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("sfc.exe", new[] { "/scannow" }, progress, token);
+
+    public static Task RunDiskScanAsync(IProgress<string> progress, CancellationToken token)
+    {
+        var systemDrive = Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
+        return RunProcessAsync("chkdsk.exe", new[] { systemDrive, "/scan" }, progress, token);
+    }
 
     private static async Task RunProcessAsync(string file, string[] args, IProgress<string> progress, CancellationToken token)
     {
