@@ -7,6 +7,8 @@ namespace UltimateCleaningUtility;
 public sealed class MainForm : Form
 {
     private readonly FlowLayoutPanel _operations = new();
+    private readonly FlowLayoutPanel _filterBar = new();
+    private string _activeFilter = "All";
     private readonly RichTextBox _log = new();
     private readonly Label _status = new();
     private readonly Label _selectionCount = new();
@@ -32,7 +34,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility V3.2";
+        Text = "Ultimate Cleaning Utility V3.3";
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -63,7 +65,7 @@ public sealed class MainForm : Form
         brand.Controls.Add(mark);
         brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(53, 5) });
         brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(54, 27) });
-        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 2", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
+        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 3", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
         var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
@@ -91,7 +93,7 @@ public sealed class MainForm : Form
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
         top.Controls.Add(_pageTitle);
         top.Controls.Add(new Label { Text = "A clearer, safer way to maintain Windows.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(2, 42) });
-        var version = new Label { Text = "V3.2  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+        var version = new Label { Text = "V3.3  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
         top.Controls.Add(version);
         _main.Controls.Add(top);
 
@@ -103,6 +105,32 @@ public sealed class MainForm : Form
         summary.Controls.Add(selectedCard);
         summary.Controls.Add(safeCard);
         _main.Controls.Add(summary);
+
+        _filterBar.Dock = DockStyle.Top;
+        _filterBar.Height = 44;
+        _filterBar.FlowDirection = FlowDirection.LeftToRight;
+        _filterBar.WrapContents = false;
+        _filterBar.Padding = new Padding(0, 2, 0, 4);
+        _filterBar.Margin = new Padding(0);
+        foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Network" })
+        {
+            var filterButton = new Button
+            {
+                Name = "tool-filter:" + filter,
+                Text = filter,
+                Width = filter == "Maintenance" ? 112 : 88,
+                Height = 32,
+                Margin = new Padding(0, 0, 8, 0),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Tag = filter
+            };
+            filterButton.FlatAppearance.BorderSize = 1;
+            filterButton.Click += (_, _) => ApplyToolFilter(filter);
+            _filterBar.Controls.Add(filterButton);
+        }
+        _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
         contentHeader.Controls.Add(new Label { Text = "Cleanup operations", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) });
@@ -230,8 +258,9 @@ public sealed class MainForm : Form
         _main.Controls.SetChildIndex(_operations, 0);
         _main.Controls.SetChildIndex(actionBar, 1);
         _main.Controls.SetChildIndex(contentHeader, 2);
-        _main.Controls.SetChildIndex(summary, 3);
-        _main.Controls.SetChildIndex(top, 4);
+        _main.Controls.SetChildIndex(_filterBar, 3);
+        _main.Controls.SetChildIndex(summary, 4);
+        _main.Controls.SetChildIndex(top, 5);
     }
 
     private Button NavButton(string text) => new()
@@ -261,11 +290,16 @@ public sealed class MainForm : Form
         AddCard("Temporary files", "Windows temp", "Removes eligible files from the Windows temporary folder. Requires administrator access.", "LOW RISK", true, CleanupEngine.CleanWindowsTempAsync);
         AddCard("Caches", "Thumbnail cache", "Removes rebuildable Explorer thumbnail databases. Windows recreates them.", "LOW RISK", true, CleanupEngine.CleanThumbnailCacheAsync);
         AddCard("Caches", "Internet cache", "Clears the current user's legacy Windows INetCache folder.", "LOW RISK", false, CleanupEngine.CleanInternetCacheAsync);
+        AddCard("Caches", "DirectX shader cache", "Removes rebuildable DirectX shader cache files. Windows and games recreate them as needed.", "LOW RISK", false, CleanupEngine.CleanShaderCacheAsync);
+        AddCard("Cleanup", "Windows error reports", "Removes queued and archived Windows Error Reporting files. Does not affect Windows system files.", "LOW RISK", false, CleanupEngine.CleanWindowsErrorReportsAsync);
+        AddCard("Windows Update", "Windows Update download cache", "Clears downloaded update files after safely stopping and restarting Windows Update services. Updates may need to download again.", "CAUTION", false, CleanupEngine.CleanWindowsUpdateCacheAsync);
         AddCard("Cleanup", "Recycle Bin", "Permanently empties the Recycle Bin on all drives. Review its contents first; this cannot be undone.", "PERMANENT", false, CleanupEngine.EmptyRecycleBinAsync);
         AddCard("Network", "Flush DNS cache", "Clears the local DNS resolver cache. This does not delete personal data.", "SAFE", false, CleanupEngine.FlushDnsAsync);
-        AddCard("Maintenance", "DISM component cleanup", "Runs Microsoft's component-store cleanup operation. It can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
-        AddCard("Maintenance", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "MAINTENANCE", false, CleanupEngine.RunSfcAsync);
-        AddCard("Windows Update", "Update download cache", "Not enabled in this first build. Service-aware cleanup will be added after testing.", "COMING SOON", false, null, true);
+        AddCard("Maintenance", "Analyze component store", "Reports whether the Windows component store has cleanup recommendations. Does not modify files.", "DIAGNOSTIC", false, CleanupEngine.RunDismAnalyzeAsync);
+        AddCard("Maintenance", "DISM component cleanup", "Cleans up superseded Windows component versions. This can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
+        AddCard("Repair", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
+        AddCard("Repair", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
+        AddCard("Maintenance", "Check system drive", "Runs an online scan of the Windows system drive without scheduling an offline repair.", "SCAN", false, CleanupEngine.RunDiskScanAsync);
     }
 
     private void AddCard(string category, string title, string description, string risk, bool defaultSelected, Func<IProgress<string>, CancellationToken, Task>? action, bool disabled = false)
@@ -283,20 +317,49 @@ public sealed class MainForm : Form
     private void ShowPage(string page)
     {
         _pageTitle.Text = page;
-        foreach (var card in _cards)
-        {
-            card.Visible = page switch
-            {
-                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network") || Equals(card.Tag, "Cleanup"),
-                "Repair" => Equals(card.Tag, "Maintenance"),
-                _ => true
-            };
-        }
+        if (page == "Overview" || page == "Settings")
+            ApplyToolFilter("All");
+        else if (page == "Cleanup" || page == "Repair")
+            ApplyToolFilter(page);
+        else
+            ApplyToolFilter("All");
+
         if (page == "Settings")
             Log("SETTINGS", "Use Toggle appearance in the sidebar to switch themes. All cleanup actions remain manual and opt-in.");
         else
-            Log("NAV", $"Showing {page} operations.");
+            Log("NAV", page == "Overview" ? "Showing all available tools." : $"Showing {page} tools.");
+    }
+
+    private void ApplyToolFilter(string filter)
+    {
+        _activeFilter = filter;
+        foreach (var card in _cards)
+        {
+            card.Visible = filter switch
+            {
+                "All" => true,
+                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Cleanup") || Equals(card.Tag, "Windows Update"),
+                "Maintenance" => Equals(card.Tag, "Maintenance"),
+                "Repair" => Equals(card.Tag, "Repair"),
+                "Network" => Equals(card.Tag, "Network"),
+                _ => true
+            };
+        }
+
+        RefreshFilterButtonStyles();
         _operations.PerformLayout();
+    }
+
+    private void RefreshFilterButtonStyles()
+    {
+        foreach (Control control in _filterBar.Controls)
+        {
+            if (control is not Button button) continue;
+            var selected = Equals(button.Tag, _activeFilter);
+            button.BackColor = selected ? Accent : (_dark ? DarkCard : Color.FromArgb(232, 237, 243));
+            button.ForeColor = selected ? Color.White : (_dark ? DarkText : Color.FromArgb(30, 39, 52));
+            button.FlatAppearance.BorderColor = selected ? Accent : (_dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228));
+        }
     }
 
     private void UpdateSelection()
@@ -312,7 +375,10 @@ public sealed class MainForm : Form
         var selected = _cards.Where(c => c.Selected && !c.Disabled && c.Action != null).ToList();
         if (selected.Count == 0) return;
         var names = string.Join(", ", selected.Select(x => x.OperationTitle));
-        if (MessageBox.Show($"Run {selected.Count} selected operation(s)?\n\n{names}\n\nSome operations modify Windows caches or system components. Continue?", "Confirm operations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        var confirmation = $"Run {selected.Count} selected operation(s)?\n\n{names}\n\nSome operations modify Windows caches or system components. Continue?";
+        if (selected.Any(x => Equals(x.Tag, "Maintenance") || Equals(x.Tag, "Repair")))
+            confirmation += "\n\nWARNING: MAINTENANCE TOOLS WILL TAKE A WHILE TO COMPLETE. PLEASE BE PATIENT.\n\nDo not close the application or interrupt the process unless absolutely necessary. Keep your PC connected to power. Some repair operations may also download files or take considerably longer depending on your system.";
+        if (MessageBox.Show(confirmation, "Confirm operations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
 
         var runCts = new CancellationTokenSource();
@@ -324,6 +390,7 @@ public sealed class MainForm : Form
         _status.Text = "Running...";
         Log("START", $"Starting {selected.Count} operation(s).");
 
+        var failures = 0;
         try
         {
             for (int i = 0; i < selected.Count; i++)
@@ -338,11 +405,24 @@ public sealed class MainForm : Form
                     Log("DONE", $"{card.OperationTitle} completed.");
                 }
                 catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { Log("ERROR", $"{card.OperationTitle}: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    failures++;
+                    Log("ERROR", $"{card.OperationTitle}: {ex.Message}");
+                }
                 _progress.Value = Math.Min(i + 1, _progress.Maximum);
             }
-            _status.Text = "Completed";
-            Log("DONE", "Selected operations finished.");
+            _status.Text = failures == 0 ? "Completed" : "Completed with issues";
+            Log(failures == 0 ? "DONE" : "WARN", failures == 0
+                ? "All selected tweaks completed successfully."
+                : $"Run finished with {failures} operation(s) reporting errors.");
+            MessageBox.Show(
+                failures == 0
+                    ? $"All {selected.Count} selected tweaks have been completed successfully."
+                    : $"The run has finished. {selected.Count - failures} operation(s) completed and {failures} operation(s) reported errors. Check the execution log for details.",
+                failures == 0 ? "All tweaks completed" : "Tweaks completed with issues",
+                MessageBoxButtons.OK,
+                failures == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (OperationCanceledException)
         {
@@ -394,6 +474,7 @@ public sealed class MainForm : Form
         _log.BackColor = _dark ? Color.FromArgb(10, 15, 23) : Color.FromArgb(242, 245, 248);
         _log.ForeColor = _dark ? Color.FromArgb(185, 205, 220) : Color.FromArgb(45, 57, 70);
         foreach (var card in _cards) card.SetTheme(_dark, DarkCard, Color.White, DarkText, Color.FromArgb(30, 39, 52), DarkMuted, Accent);
+        RefreshFilterButtonStyles();
         Invalidate(true);
     }
 

@@ -45,6 +45,32 @@ internal static class CleanupEngine
         return CleanDirectoryAsync(path, progress, token);
     }
 
+    public static Task CleanShaderCacheAsync(IProgress<string> progress, CancellationToken token)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "D3DSCache");
+        return CleanDirectoryAsync(path, progress, token);
+    }
+
+    public static Task CleanWindowsErrorReportsAsync(IProgress<string> progress, CancellationToken token) =>
+        Task.Run(() =>
+        {
+            var roots = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Windows", "WER", "ReportQueue"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Windows", "WER", "ReportArchive")
+            };
+            foreach (var path in roots)
+            {
+                token.ThrowIfCancellationRequested();
+                if (Directory.Exists(path))
+                {
+                    progress.Report($"Cleaning Windows Error Reporting: {path}");
+                    DeleteContents(path, progress, token);
+                }
+                else progress.Report($"Report folder not found; skipped: {path}");
+            }
+        }, token);
+
     private static Task CleanDirectoryAsync(string path, IProgress<string> progress, CancellationToken token) =>
         Task.Run(() =>
         {
@@ -136,11 +162,42 @@ internal static class CleanupEngine
     public static Task FlushDnsAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("ipconfig.exe", new[] { "/flushdns" }, progress, token);
 
+    public static Task CleanWindowsUpdateCacheAsync(IProgress<string> progress, CancellationToken token)
+    {
+        const string script = "$ErrorActionPreference = 'Stop'; " +
+            "$services = @('bits', 'wuauserv'); " +
+            "foreach ($name in $services) { try { Stop-Service -Name $name -Force -ErrorAction Stop; " +
+            "Write-Output ('Stopped service: ' + $name); } catch { Write-Output ('Could not stop ' + $name + ': ' + $_.Exception.Message); throw; } } " +
+            "try { $folder = Join-Path $env:windir 'SoftwareDistribution\\Download'; " +
+            "if (Test-Path -LiteralPath $folder) { Get-ChildItem -LiteralPath $folder -Force | Remove-Item -Recurse -Force -ErrorAction Stop; " +
+            "Write-Output 'Windows Update download cache cleared.'; } else { Write-Output 'Windows Update download cache folder not found.'; } } " +
+            "finally { foreach ($name in $services) { try { Start-Service -Name $name -ErrorAction Stop; " +
+            "Write-Output ('Started service: ' + $name); } catch { Write-Output ('WARNING: could not restart ' + $name + ': ' + $_.Exception.Message); } } }";
+        // Do not kill this PowerShell process mid-flight: its finally block must
+        // restart BITS and Windows Update even if the user presses Cancel.
+        token.ThrowIfCancellationRequested();
+        return RunProcessAsync("powershell.exe",
+            new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script },
+            progress, CancellationToken.None);
+    }
+
+    public static Task RunDismAnalyzeAsync(IProgress<string> progress, CancellationToken token) =>
+        RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/AnalyzeComponentStore" }, progress, token);
+
     public static Task RunDismCleanupAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/StartComponentCleanup", "/NoRestart" }, progress, token);
 
+    public static Task RunDismRestoreHealthAsync(IProgress<string> progress, CancellationToken token) =>
+        RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/RestoreHealth", "/NoRestart" }, progress, token);
+
     public static Task RunSfcAsync(IProgress<string> progress, CancellationToken token) =>
         RunProcessAsync("sfc.exe", new[] { "/scannow" }, progress, token);
+
+    public static Task RunDiskScanAsync(IProgress<string> progress, CancellationToken token)
+    {
+        var systemDrive = Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
+        return RunProcessAsync("chkdsk.exe", new[] { systemDrive, "/scan" }, progress, token);
+    }
 
     private static async Task RunProcessAsync(string file, string[] args, IProgress<string> progress, CancellationToken token)
     {
