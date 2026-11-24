@@ -13,6 +13,7 @@ public sealed class MainForm : Form
     private readonly Label _spaceLabel = new();
     private readonly ProgressBar _progress = new();
     private readonly Button _runButton = new();
+    private readonly Button _clearButton = new();
     private readonly Button _cancelButton = new();
     private readonly List<OperationCard> _cards = new();
     private bool _dark = true;
@@ -130,16 +131,41 @@ public sealed class MainForm : Form
         _selectionCount.Font = new Font("Segoe UI", 9, FontStyle.Bold);
         actionBar.Controls.Add(_selectionCount);
 
+        var actionButtons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            Width = 292,
+            Height = 42,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
+        };
+
+        _clearButton.Text = "Clear tweaks";
+        _clearButton.Width = 112;
+        _clearButton.Height = 36;
+        _clearButton.Margin = new Padding(0, 2, 10, 0);
+        _clearButton.FlatStyle = FlatStyle.Flat;
+        _clearButton.Click += (_, _) =>
+        {
+            foreach (var card in _cards) card.Selected = false;
+            UpdateSelection();
+            Log("SELECTION", "All tweak selections cleared.");
+        };
+        actionButtons.Controls.Add(_clearButton);
+
         _runButton.Text = "Run tweaks  →";
-        _runButton.Dock = DockStyle.Right;
         _runButton.Width = 160;
-        _runButton.Margin = new Padding(0);
+        _runButton.Height = 36;
+        _runButton.Margin = new Padding(0, 2, 0, 0);
         _runButton.BackColor = Accent;
         _runButton.ForeColor = Color.White;
         _runButton.FlatStyle = FlatStyle.Flat;
         _runButton.FlatAppearance.BorderSize = 0;
         _runButton.Click += async (_, _) => await RunSelectedAsync();
-        actionBar.Controls.Add(_runButton);
+        actionButtons.Controls.Add(_runButton);
+        actionBar.Controls.Add(actionButtons);
         _main.Controls.Add(actionBar);
 
         _console.Dock = DockStyle.Bottom;
@@ -438,13 +464,29 @@ public bool Selected
         _description.AutoEllipsis = true;
         _risk.Text = risk; _risk.Font = new Font("Segoe UI", 7, FontStyle.Bold);
         _risk.Location = new Point(12, 111); _risk.AutoSize = true;
-        _check.Text = disabled ? "Unavailable" : "Select";
-        _check.AutoSize = true; _check.Checked = selected; _check.Enabled = !disabled;
-        _check.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
-        _check.Location = new Point(208, 108);
+        _check.Text = "";
+        _check.AutoSize = false;
+        _check.Size = new Size(24, 24);
+        _check.Checked = selected;
+        _check.Enabled = !disabled;
+        _check.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _check.Location = new Point(260, 9);
+        _check.FlatStyle = FlatStyle.Standard;
+        _check.Cursor = Cursors.Hand;
         _check.CheckedChanged += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
         Controls.AddRange(new Control[] { _category, _title, _description, _risk, _check });
+
+        // Clicking the card's text or empty space toggles its visible checkbox.
+        Click += (_, _) => ToggleSelection();
+        foreach (Control part in new Control[] { _category, _title, _description, _risk })
+            part.Click += (_, _) => ToggleSelection();
         if (disabled) _risk.Text = "COMING SOON";
+    }
+
+    private void ToggleSelection()
+    {
+        if (!Disabled && _check.Enabled)
+            _check.Checked = !_check.Checked;
     }
 
     public void SetTheme(bool dark, Color darkCard, Color lightCard, Color darkText, Color lightText, Color muted, Color accent)
