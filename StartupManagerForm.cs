@@ -19,7 +19,7 @@ internal sealed class StartupManagerForm : Form
     public StartupManagerForm()
     {
         Icon = Branding.CreateIcon();
-        Text = "Startup Manager — EXE COMPUTERS";
+        Text = "Startup Manager";
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(900, 580);
         Size = new Size(1120, 720);
