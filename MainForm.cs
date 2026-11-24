@@ -292,7 +292,7 @@ public sealed class MainForm : Form
         {
             card.Visible = page switch
             {
-                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network") || Equals(card.Tag, "Cleanup"),
+                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network") || Equals(card.Tag, "Cleanup") || Equals(card.Tag, "Windows Update"),
                 "Repair" => Equals(card.Tag, "Maintenance"),
                 _ => true
             };
