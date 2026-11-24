@@ -15,15 +15,18 @@ public sealed class MainForm : Form
     private readonly Label _spaceLabel = new();
     private readonly ProgressBar _progress = new();
     private readonly Button _runButton = new();
+    private readonly Button _skipButton = new();
     private readonly Button _clearButton = new();
     private readonly Button _cancelButton = new();
     private readonly List<OperationCard> _cards = new();
     private bool _dark = true;
     private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _operationCts;
     private Panel _sidebar = new();
     private Panel _main = new();
     private Panel _console = new();
     private Label _pageTitle = new();
+    private Label _toolsSectionTitle = new();
 
     private readonly Color DarkBg = Color.FromArgb(15, 21, 31);
     private readonly Color DarkPanel = Color.FromArgb(24, 33, 47);
@@ -34,7 +37,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility V3.3";
+        Text = "Ultimate Cleaning Utility V3.4";
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -43,7 +46,7 @@ public sealed class MainForm : Form
         AddOperations();
         ApplyTheme();
         UpdateSelection();
-        Log("READY", "Ultimate Cleaning Utility V3.2 initialized.");
+        Log("READY", "Ultimate Cleaning Utility V3.4 initialized.");
         Log("INFO", "Tick the tweaks you want, then press Run tweaks. Nothing runs automatically.");
         RefreshDiskSpace();
     }
@@ -65,24 +68,40 @@ public sealed class MainForm : Form
         brand.Controls.Add(mark);
         brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(53, 5) });
         brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(54, 27) });
-        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 3", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
+        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
-        var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        foreach (var item in new[] { "Overview", "Cleanup", "Repair", "Settings" })
-        {
-            var b = NavButton(item);
-            nav.Controls.Add(b);
-            b.Click += (_, _) => ShowPage(item);
-        }
+        // Keep only the dedicated Startup workspace in the sidebar.
+        var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 56, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        var startupButton = NavButton("Startup");
+        nav.Controls.Add(startupButton);
+        startupButton.Click += (_, _) => ShowPage("Startup");
         _sidebar.Controls.Add(nav);
 
-        var sideBottom = new Panel { Dock = DockStyle.Bottom, Height = 95 };
-        var theme = new Button { Text = "◐   Toggle appearance", Height = 38, Dock = DockStyle.Top, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
+        // Helpful shortcuts and EXE COMPUTERS links sit directly above appearance controls.
+        var sideBottom = new Panel { Dock = DockStyle.Bottom, Height = 248 };
+        var shortcut = new Button { Text = "＋   Add desktop shortcut", Height = 34, Dock = DockStyle.Top, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
+        shortcut.FlatAppearance.BorderSize = 0;
+        shortcut.Click += (_, _) => CreateDesktopShortcut();
+        sideBottom.Controls.Add(shortcut);
+
+        var website = new LinkLabel { Text = "execomputers.in", AutoSize = true, LinkColor = Accent, ActiveLinkColor = Accent, Location = new Point(4, 46), Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        website.LinkClicked += (_, _) => OpenExternal("https://execomputers.in");
+        sideBottom.Controls.Add(website);
+        sideBottom.Controls.Add(new Label { Text = "FOLLOW EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Font = new Font("Segoe UI", 7.5f, FontStyle.Bold), Location = new Point(4, 75) });
+
+        var instagram = new LinkLabel { Text = "Instagram", AutoSize = true, LinkColor = Accent, ActiveLinkColor = Accent, Location = new Point(4, 98) };
+        instagram.LinkClicked += (_, _) => OpenExternal("https://instagram.com/execomputers");
+        sideBottom.Controls.Add(instagram);
+        var youtube = new LinkLabel { Text = "YouTube", AutoSize = true, LinkColor = Accent, ActiveLinkColor = Accent, Location = new Point(4, 122) };
+        youtube.LinkClicked += (_, _) => OpenExternal("https://youtube.com/@ExeComputers");
+        sideBottom.Controls.Add(youtube);
+
+        var theme = new Button { Text = "◐   Toggle appearance", Height = 38, Dock = DockStyle.Bottom, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
         theme.FlatAppearance.BorderSize = 0;
         theme.Click += (_, _) => { _dark = !_dark; ApplyTheme(); };
         sideBottom.Controls.Add(theme);
-        sideBottom.Controls.Add(new Label { Text = "Made by SubhExe", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 52) });
+        sideBottom.Controls.Add(new Label { Text = "Made by EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 174) });
         _sidebar.Controls.Add(sideBottom);
 
         _main.Dock = DockStyle.Fill;
@@ -93,7 +112,7 @@ public sealed class MainForm : Form
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
         top.Controls.Add(_pageTitle);
         top.Controls.Add(new Label { Text = "A clearer, safer way to maintain Windows.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(2, 42) });
-        var version = new Label { Text = "V3.3  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+        var version = new Label { Text = "V3.4  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
         top.Controls.Add(version);
         _main.Controls.Add(top);
 
@@ -112,13 +131,13 @@ public sealed class MainForm : Form
         _filterBar.WrapContents = false;
         _filterBar.Padding = new Padding(0, 2, 0, 4);
         _filterBar.Margin = new Padding(0);
-        foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Network" })
+        foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Diagnostics", "Network", "Security", "System Information" })
         {
             var filterButton = new Button
             {
                 Name = "tool-filter:" + filter,
                 Text = filter,
-                Width = filter == "Maintenance" ? 112 : 88,
+                Width = filter == "Maintenance" ? 112 : filter == "System Information" ? 142 : filter == "Diagnostics" ? 104 : filter == "Security" ? 88 : 88,
                 Height = 32,
                 Margin = new Padding(0, 0, 8, 0),
                 FlatStyle = FlatStyle.Flat,
@@ -133,7 +152,8 @@ public sealed class MainForm : Form
         _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
-        contentHeader.Controls.Add(new Label { Text = "Cleanup operations", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) });
+        _toolsSectionTitle = new Label { Text = "All tools", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) };
+        contentHeader.Controls.Add(_toolsSectionTitle);
         contentHeader.Controls.Add(new Label { Text = "Click tweaks to select them, then run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
         var selectAll = new Button { Text = "Select safe tasks", Width = 130, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(790, 10), FlatStyle = FlatStyle.Flat };
         selectAll.Click += (_, _) => { foreach (var c in _cards.Where(x => x.IsSafeDefault)) c.Selected = true; UpdateSelection(); };
@@ -162,13 +182,27 @@ public sealed class MainForm : Form
         var actionButtons = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
-            Width = 292,
+            Width = 424,
             Height = 42,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             Padding = new Padding(0),
             Margin = new Padding(0)
         };
+
+        _skipButton.Text = "Skip current";
+        _skipButton.Width = 120;
+        _skipButton.Height = 36;
+        _skipButton.Margin = new Padding(0, 2, 10, 0);
+        _skipButton.FlatStyle = FlatStyle.Flat;
+        _skipButton.Enabled = false;
+        _skipButton.Click += (_, _) =>
+        {
+            if (_operationCts == null || _operationCts.IsCancellationRequested) return;
+            Log("SKIP", "Skip requested for the current operation. It will stop when it is safe to do so.");
+            _operationCts.Cancel();
+        };
+        actionButtons.Controls.Add(_skipButton);
 
         _clearButton.Text = "Clear tweaks";
         _clearButton.Width = 112;
@@ -208,6 +242,14 @@ public sealed class MainForm : Form
         _status.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _status.Location = new Point(900, 5);
         consoleHeader.Controls.Add(_status);
+        var enlargeConsole = new Button { Text = "Expand console", Width = 112, Height = 25, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(740, 0), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8) };
+        enlargeConsole.Click += (_, _) =>
+        {
+            _consoleExpanded = !_consoleExpanded;
+            _console.Height = _consoleExpanded ? 390 : 220;
+            enlargeConsole.Text = _consoleExpanded ? "Collapse console" : "Expand console";
+        };
+        consoleHeader.Controls.Add(enlargeConsole);
         _console.Controls.Add(consoleHeader);
 
         _log.Dock = DockStyle.Fill;
@@ -300,6 +342,28 @@ public sealed class MainForm : Form
         AddCard("Repair", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
         AddCard("Repair", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
         AddCard("Maintenance", "Check system drive", "Runs an online scan of the Windows system drive without scheduling an offline repair.", "SCAN", false, CleanupEngine.RunDiskScanAsync);
+        // BleachBit-inspired cleaners: only rebuildable caches and old crash artifacts.
+        AddCard("Caches", "Browser cache", "Clears cache files for Edge, Chrome and Firefox only. Cookies, passwords, history and open sessions are not touched. Close browsers first.", "LOW RISK", false, CleanupEngine.CleanBrowserCachesAsync);
+        AddCard("Cleanup", "Delivery Optimization cache", "Clears Windows peer-to-peer update delivery cache using Microsoft's cleanup cmdlet. Windows can recreate it.", "LOW RISK", false, CleanupEngine.CleanDeliveryOptimizationCacheAsync);
+        AddCard("Cleanup", "Old crash dumps", "Removes crash dump files older than 30 days. Keeps recent dumps that may help diagnose current problems.", "CAUTION", false, CleanupEngine.CleanOldCrashDumpsAsync);
+
+        // Read-only diagnostics and reports.
+        AddCard("Diagnostics", "Disk health & SMART", "Reads Windows disk health, status and capacity information. SMART availability depends on the drive and controller.", "READ ONLY", false, CleanupEngine.CheckDiskHealthAsync);
+        AddCard("Diagnostics", "Battery health report", "Generates a Windows battery report on your Desktop. Useful for laptops; desktop PCs may not have a battery.", "REPORT", false, CleanupEngine.CreateBatteryReportAsync);
+        AddCard("Diagnostics", "Startup apps analyzer", "Lists applications registered to start automatically. Does not disable or change anything.", "READ ONLY", false, CleanupEngine.AnalyzeStartupAppsAsync);
+        AddCard("Diagnostics", "Event log analyzer", "Shows recent critical and error events from the System and Application logs. Does not clear event logs.", "READ ONLY", false, CleanupEngine.AnalyzeEventLogsAsync);
+        AddCard("Diagnostics", "Installed apps inventory", "Lists installed desktop applications from standard Windows uninstall records. Does not uninstall anything.", "READ ONLY", false, CleanupEngine.ListInstalledAppsAsync);
+        AddCard("System Information", "Driver inventory", "Lists third-party driver packages registered with Windows using PnPUtil.", "READ ONLY", false, CleanupEngine.ListDriversAsync);
+        AddCard("System Information", "Windows activation status", "Checks Windows licensing status and displays only the partial product key. Does not expose a full key.", "READ ONLY", false, CleanupEngine.CheckActivationAsync);
+        AddCard("System Information", "System information report", "Creates a detailed MSInfo32 system report on your Desktop.", "REPORT", false, CleanupEngine.CreateSystemInfoReportAsync);
+        AddCard("Network", "Network diagnostics", "Collects IP configuration and tests internet reachability and DNS resolution. Does not reset network settings.", "READ ONLY", false, CleanupEngine.RunNetworkDiagnosticsAsync);
+
+        // Maintenance and security tasks.
+        AddCard("Maintenance", "Optimize drives", "Runs Windows Optimize Drives with the /O option so Windows chooses the appropriate operation for SSDs or HDDs.", "MAINTENANCE", false, CleanupEngine.OptimizeSystemDriveAsync);
+        AddCard("Maintenance", "SSD TRIM status", "Checks whether Windows has TRIM notifications enabled. This is a read-only status check.", "READ ONLY", false, CleanupEngine.CheckTrimStatusAsync);
+        AddCard("Repair", "Create restore point", "Requests a Windows system restore point before major changes. Requires System Protection to be enabled; Windows may limit frequency.", "CAUTION", false, CleanupEngine.CreateRestorePointAsync);
+        AddCard("Security", "Microsoft Defender quick scan", "Starts a Microsoft Defender quick scan. Availability depends on Defender being enabled and not managed by another antivirus.", "SECURITY", false, CleanupEngine.RunDefenderQuickScanAsync);
+        AddCard("Security", "Update Defender signatures", "Requests the latest Microsoft Defender security intelligence updates.", "SECURITY", false, CleanupEngine.UpdateDefenderSignaturesAsync);
     }
 
     private void AddCard(string category, string title, string description, string risk, bool defaultSelected, Func<IProgress<string>, CancellationToken, Task>? action, bool disabled = false)
@@ -316,23 +380,48 @@ public sealed class MainForm : Form
 
     private void ShowPage(string page)
     {
-        _pageTitle.Text = page;
-        if (page == "Overview" || page == "Settings")
-            ApplyToolFilter("All");
-        else if (page == "Cleanup" || page == "Repair")
-            ApplyToolFilter(page);
-        else
-            ApplyToolFilter("All");
+        if (page != "Startup") return;
+        _pageTitle.Text = "Startup";
+        using var startup = new StartupManagerForm();
+        startup.ShowDialog(this);
+        Log("STARTUP", "Startup manager closed. Refresh it to view any changes made outside the utility.");
+    }
 
-        if (page == "Settings")
-            Log("SETTINGS", "Use Toggle appearance in the sidebar to switch themes. All cleanup actions remain manual and opt-in.");
-        else
-            Log("NAV", page == "Overview" ? "Showing all available tools." : $"Showing {page} tools.");
+    private bool _consoleExpanded;
+
+    private static void OpenExternal(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { MessageBox.Show($"Could not open the link.\\n\\n{ex.Message}", "Open link", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+    }
+
+    private void CreateDesktopShortcut()
+    {
+        try
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var shortcutPath = Path.Combine(desktop, "Ultimate Cleaning Utility.lnk");
+            var shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("Windows Script Host is unavailable.");
+            dynamic shell = Activator.CreateInstance(shellType) ?? throw new InvalidOperationException("Could not create the shortcut service.");
+            dynamic shortcut = shell.CreateShortcut(shortcutPath);
+            shortcut.TargetPath = Application.ExecutablePath;
+            shortcut.WorkingDirectory = AppContext.BaseDirectory;
+            shortcut.Description = "Ultimate Cleaning Utility by EXE COMPUTERS";
+            shortcut.IconLocation = Application.ExecutablePath + ",0";
+            shortcut.Save();
+            MessageBox.Show("Desktop shortcut created successfully.", "EXE COMPUTERS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not create the desktop shortcut.\\n\\n{ex.Message}", "EXE COMPUTERS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void ApplyToolFilter(string filter)
     {
         _activeFilter = filter;
+        if (_toolsSectionTitle != null)
+            _toolsSectionTitle.Text = filter == "All" ? "All tools" : $"{filter} tools";
         foreach (var card in _cards)
         {
             card.Visible = filter switch
@@ -342,6 +431,9 @@ public sealed class MainForm : Form
                 "Maintenance" => Equals(card.Tag, "Maintenance"),
                 "Repair" => Equals(card.Tag, "Repair"),
                 "Network" => Equals(card.Tag, "Network"),
+                "Diagnostics" => Equals(card.Tag, "Diagnostics"),
+                "Security" => Equals(card.Tag, "Security"),
+                "System Information" => Equals(card.Tag, "System Information"),
                 _ => true
             };
         }
@@ -368,6 +460,7 @@ public sealed class MainForm : Form
         _selectionCount.Text = count == 1 ? "1 tweak selected" : $"{count} tweaks selected";
         if (_selectionValue != null) _selectionValue.Text = count.ToString();
         _runButton.Enabled = count > 0 && _runCts == null;
+        _skipButton.Enabled = _operationCts != null && _runCts != null;
     }
 
     private async Task RunSelectedAsync()
@@ -385,12 +478,15 @@ public sealed class MainForm : Form
         _runCts = runCts;
         _runButton.Enabled = false;
         _cancelButton.Enabled = true;
+        _skipButton.Enabled = false;
         _progress.Value = 0;
         _progress.Maximum = selected.Count;
         _status.Text = "Running...";
         Log("START", $"Starting {selected.Count} operation(s).");
 
         var failures = 0;
+        var skipped = 0;
+        var completed = 0;
         try
         {
             for (int i = 0; i < selected.Count; i++)
@@ -399,10 +495,27 @@ public sealed class MainForm : Form
                 var card = selected[i];
                 Log("TASK", card.OperationTitle);
                 var progress = new Progress<string>(message => Log("INFO", message));
+                using var operationCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+                _operationCts = operationCts;
+                _skipButton.Enabled = true;
                 try
                 {
-                    await card.Action!(progress, runCts.Token);
-                    Log("DONE", $"{card.OperationTitle} completed.");
+                    await card.Action!(progress, operationCts.Token);
+                    if (operationCts.IsCancellationRequested && !runCts.IsCancellationRequested)
+                    {
+                        skipped++;
+                        Log("SKIP", $"{card.OperationTitle} was skipped at the user's request.");
+                    }
+                    else
+                    {
+                        completed++;
+                        Log("DONE", $"{card.OperationTitle} completed.");
+                    }
+                }
+                catch (OperationCanceledException) when (!runCts.IsCancellationRequested)
+                {
+                    skipped++;
+                    Log("SKIP", $"{card.OperationTitle} was skipped. Any partial changes are noted above.");
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -410,30 +523,38 @@ public sealed class MainForm : Form
                     failures++;
                     Log("ERROR", $"{card.OperationTitle}: {ex.Message}");
                 }
+                finally
+                {
+                    _operationCts = null;
+                    _skipButton.Enabled = false;
+                }
                 _progress.Value = Math.Min(i + 1, _progress.Maximum);
             }
-            _status.Text = failures == 0 ? "Completed" : "Completed with issues";
-            Log(failures == 0 ? "DONE" : "WARN", failures == 0
-                ? "All selected tweaks completed successfully."
-                : $"Run finished with {failures} operation(s) reporting errors.");
+
+            _status.Text = failures == 0 && skipped == 0 ? "Completed" : "Completed with issues";
+            Log(failures == 0 && skipped == 0 ? "DONE" : "WARN",
+                $"Run finished: {completed} completed, {skipped} skipped, {failures} failed.");
+            var allSuccessful = failures == 0 && skipped == 0;
             MessageBox.Show(
-                failures == 0
+                allSuccessful
                     ? $"All {selected.Count} selected tweaks have been completed successfully."
-                    : $"The run has finished. {selected.Count - failures} operation(s) completed and {failures} operation(s) reported errors. Check the execution log for details.",
-                failures == 0 ? "All tweaks completed" : "Tweaks completed with issues",
+                    : $"Run finished. {completed} operation(s) completed, {skipped} skipped, and {failures} failed. Check the execution log for details.",
+                allSuccessful ? "All tweaks completed" : "Tweaks completed with issues",
                 MessageBoxButtons.OK,
-                failures == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                allSuccessful ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (OperationCanceledException)
         {
             _status.Text = "Cancelled";
-            Log("WARN", "Execution cancelled. The current operation may have completed partially.");
+            Log("WARN", "Run cancelled. The current operation may have completed partially; remaining operations were not started.");
         }
         finally
         {
+            _operationCts = null;
             runCts.Dispose();
             if (ReferenceEquals(_runCts, runCts)) _runCts = null;
             _cancelButton.Enabled = false;
+            _skipButton.Enabled = false;
             _runButton.Enabled = true;
             UpdateSelection();
             RefreshDiskSpace();

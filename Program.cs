@@ -9,6 +9,7 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
+        using (var splash = new SplashScreenForm()) splash.ShowDialog();
         Application.Run(new MainForm());
     }
 }
