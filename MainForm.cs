@@ -71,13 +71,6 @@ public sealed class MainForm : Form
         brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 4", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
-        // Keep only the dedicated Startup workspace in the sidebar.
-        var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 56, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        var startupButton = NavButton("Startup");
-        nav.Controls.Add(startupButton);
-        startupButton.Click += (_, _) => ShowPage("Startup");
-        _sidebar.Controls.Add(nav);
-
         // Helpful shortcuts and EXE COMPUTERS links sit directly above appearance controls.
         var sideBottom = new Panel { Dock = DockStyle.Bottom, Height = 248 };
         var shortcut = new Button { Text = "＋   Add desktop shortcut", Height = 34, Dock = DockStyle.Top, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
@@ -149,6 +142,34 @@ public sealed class MainForm : Form
             filterButton.Click += (_, _) => ApplyToolFilter(filter);
             _filterBar.Controls.Add(filterButton);
         }
+
+        var separator = new Label
+        {
+            Text = "|",
+            AutoSize = false,
+            Width = 18,
+            Height = 30,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.Gray,
+            Font = new Font("Segoe UI", 12, FontStyle.Regular),
+            Margin = new Padding(0, 0, 6, 0)
+        };
+        _filterBar.Controls.Add(separator);
+
+        var startupFilter = new Button
+        {
+            Name = "startup-tool",
+            Text = "Startup",
+            Width = 92,
+            Height = 32,
+            Margin = new Padding(0, 0, 8, 0),
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        startupFilter.FlatAppearance.BorderSize = 1;
+        startupFilter.Click += (_, _) => ShowPage("Startup");
+        _filterBar.Controls.Add(startupFilter);
         _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
@@ -381,7 +402,6 @@ public sealed class MainForm : Form
     private void ShowPage(string page)
     {
         if (page != "Startup") return;
-        _pageTitle.Text = "Startup";
         using var startup = new StartupManagerForm();
         startup.ShowDialog(this);
         Log("STARTUP", "Startup manager closed. Refresh it to view any changes made outside the utility.");
