@@ -9,8 +9,8 @@
     <AssemblyName>UltimateCleaningUtility</AssemblyName>
     <RootNamespace>UltimateCleaningUtility</RootNamespace>
     <Version>3.4.0</Version>
-    <Authors>SubhExe</Authors>
+    <Authors>EXE COMPUTERS</Authors>
     <Product>Ultimate Cleaning Utility</Product>
-    <Description>Safe Windows cleanup, diagnostics and maintenance utility by SubhExe.</Description>
+    <Description>Safe Windows cleanup, diagnostics and maintenance utility by EXE COMPUTERS.</Description>
   </PropertyGroup>
 </Project>
