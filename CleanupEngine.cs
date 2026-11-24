@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace UltimateCleaningUtility;
 
-internal static class CleanupEngine
+internal static partial class CleanupEngine
 {
     private const uint SHERB_NOCONFIRMATION = 0x00000001;
     private const uint SHERB_NOPROGRESSUI = 0x00000002;
