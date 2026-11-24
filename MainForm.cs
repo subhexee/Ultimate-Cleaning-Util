@@ -7,6 +7,8 @@ namespace UltimateCleaningUtility;
 public sealed class MainForm : Form
 {
     private readonly FlowLayoutPanel _operations = new();
+    private readonly FlowLayoutPanel _filterBar = new();
+    private string _activeFilter = "All";
     private readonly RichTextBox _log = new();
     private readonly Label _status = new();
     private readonly Label _selectionCount = new();
@@ -103,6 +105,32 @@ public sealed class MainForm : Form
         summary.Controls.Add(selectedCard);
         summary.Controls.Add(safeCard);
         _main.Controls.Add(summary);
+
+        _filterBar.Dock = DockStyle.Top;
+        _filterBar.Height = 44;
+        _filterBar.FlowDirection = FlowDirection.LeftToRight;
+        _filterBar.WrapContents = false;
+        _filterBar.Padding = new Padding(0, 2, 0, 4);
+        _filterBar.Margin = new Padding(0);
+        foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Network" })
+        {
+            var filterButton = new Button
+            {
+                Name = "tool-filter:" + filter,
+                Text = filter,
+                Width = filter == "Maintenance" ? 112 : 88,
+                Height = 32,
+                Margin = new Padding(0, 0, 8, 0),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Tag = filter
+            };
+            filterButton.FlatAppearance.BorderSize = 1;
+            filterButton.Click += (_, _) => ApplyToolFilter(filter);
+            _filterBar.Controls.Add(filterButton);
+        }
+        _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
         contentHeader.Controls.Add(new Label { Text = "Cleanup operations", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) });
@@ -230,8 +258,9 @@ public sealed class MainForm : Form
         _main.Controls.SetChildIndex(_operations, 0);
         _main.Controls.SetChildIndex(actionBar, 1);
         _main.Controls.SetChildIndex(contentHeader, 2);
-        _main.Controls.SetChildIndex(summary, 3);
-        _main.Controls.SetChildIndex(top, 4);
+        _main.Controls.SetChildIndex(_filterBar, 3);
+        _main.Controls.SetChildIndex(summary, 4);
+        _main.Controls.SetChildIndex(top, 5);
     }
 
     private Button NavButton(string text) => new()
@@ -268,8 +297,8 @@ public sealed class MainForm : Form
         AddCard("Network", "Flush DNS cache", "Clears the local DNS resolver cache. This does not delete personal data.", "SAFE", false, CleanupEngine.FlushDnsAsync);
         AddCard("Maintenance", "Analyze component store", "Reports whether the Windows component store has cleanup recommendations. Does not modify files.", "DIAGNOSTIC", false, CleanupEngine.RunDismAnalyzeAsync);
         AddCard("Maintenance", "DISM component cleanup", "Cleans up superseded Windows component versions. This can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
-        AddCard("Maintenance", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
-        AddCard("Maintenance", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
+        AddCard("Repair", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
+        AddCard("Repair", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
         AddCard("Maintenance", "Check system drive", "Runs an online scan of the Windows system drive without scheduling an offline repair.", "SCAN", false, CleanupEngine.RunDiskScanAsync);
     }
 
@@ -288,20 +317,49 @@ public sealed class MainForm : Form
     private void ShowPage(string page)
     {
         _pageTitle.Text = page;
-        foreach (var card in _cards)
-        {
-            card.Visible = page switch
-            {
-                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Network") || Equals(card.Tag, "Cleanup") || Equals(card.Tag, "Windows Update"),
-                "Repair" => Equals(card.Tag, "Maintenance"),
-                _ => true
-            };
-        }
+        if (page == "Overview" || page == "Settings")
+            ApplyToolFilter("All");
+        else if (page == "Cleanup" || page == "Repair")
+            ApplyToolFilter(page);
+        else
+            ApplyToolFilter("All");
+
         if (page == "Settings")
             Log("SETTINGS", "Use Toggle appearance in the sidebar to switch themes. All cleanup actions remain manual and opt-in.");
         else
-            Log("NAV", $"Showing {page} operations.");
+            Log("NAV", page == "Overview" ? "Showing all available tools." : $"Showing {page} tools.");
+    }
+
+    private void ApplyToolFilter(string filter)
+    {
+        _activeFilter = filter;
+        foreach (var card in _cards)
+        {
+            card.Visible = filter switch
+            {
+                "All" => true,
+                "Cleanup" => Equals(card.Tag, "Temporary files") || Equals(card.Tag, "Caches") || Equals(card.Tag, "Cleanup") || Equals(card.Tag, "Windows Update"),
+                "Maintenance" => Equals(card.Tag, "Maintenance"),
+                "Repair" => Equals(card.Tag, "Repair"),
+                "Network" => Equals(card.Tag, "Network"),
+                _ => true
+            };
+        }
+
+        RefreshFilterButtonStyles();
         _operations.PerformLayout();
+    }
+
+    private void RefreshFilterButtonStyles()
+    {
+        foreach (Control control in _filterBar.Controls)
+        {
+            if (control is not Button button) continue;
+            var selected = Equals(button.Tag, _activeFilter);
+            button.BackColor = selected ? Accent : (_dark ? DarkCard : Color.FromArgb(232, 237, 243));
+            button.ForeColor = selected ? Color.White : (_dark ? DarkText : Color.FromArgb(30, 39, 52));
+            button.FlatAppearance.BorderColor = selected ? Accent : (_dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228));
+        }
     }
 
     private void UpdateSelection()
@@ -416,6 +474,7 @@ public sealed class MainForm : Form
         _log.BackColor = _dark ? Color.FromArgb(10, 15, 23) : Color.FromArgb(242, 245, 248);
         _log.ForeColor = _dark ? Color.FromArgb(185, 205, 220) : Color.FromArgb(45, 57, 70);
         foreach (var card in _cards) card.SetTheme(_dark, DarkCard, Color.White, DarkText, Color.FromArgb(30, 39, 52), DarkMuted, Accent);
+        RefreshFilterButtonStyles();
         Invalidate(true);
     }
 
