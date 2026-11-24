@@ -32,7 +32,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ultimate Cleaning Utility V3.2";
+        Text = "Ultimate Cleaning Utility V3.3";
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
         StartPosition = FormStartPosition.CenterScreen;
@@ -63,7 +63,7 @@ public sealed class MainForm : Form
         brand.Controls.Add(mark);
         brand.Controls.Add(new Label { Text = "ULTIMATE", AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(53, 5) });
         brand.Controls.Add(new Label { Text = "CLEANING UTILITY", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray, Location = new Point(54, 27) });
-        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 2", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
+        brand.Controls.Add(new Label { Text = "V E R S I O N  3 . 3", AutoSize = true, Font = new Font("Segoe UI", 7), ForeColor = Color.Gray, Location = new Point(54, 47) });
         _sidebar.Controls.Add(brand);
 
         var nav = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 280, FlowDirection = FlowDirection.TopDown, WrapContents = false };
@@ -91,7 +91,7 @@ public sealed class MainForm : Form
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
         top.Controls.Add(_pageTitle);
         top.Controls.Add(new Label { Text = "A clearer, safer way to maintain Windows.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(2, 42) });
-        var version = new Label { Text = "V3.2  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
+        var version = new Label { Text = "V3.3  •  ADMINISTRATOR", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(800, 12), ForeColor = Accent, Font = new Font("Segoe UI", 8, FontStyle.Bold) };
         top.Controls.Add(version);
         _main.Controls.Add(top);
 
@@ -261,11 +261,14 @@ public sealed class MainForm : Form
         AddCard("Temporary files", "Windows temp", "Removes eligible files from the Windows temporary folder. Requires administrator access.", "LOW RISK", true, CleanupEngine.CleanWindowsTempAsync);
         AddCard("Caches", "Thumbnail cache", "Removes rebuildable Explorer thumbnail databases. Windows recreates them.", "LOW RISK", true, CleanupEngine.CleanThumbnailCacheAsync);
         AddCard("Caches", "Internet cache", "Clears the current user's legacy Windows INetCache folder.", "LOW RISK", false, CleanupEngine.CleanInternetCacheAsync);
+        AddCard("Caches", "DirectX shader cache", "Removes rebuildable DirectX shader cache files. Windows and games recreate them as needed.", "LOW RISK", false, CleanupEngine.CleanShaderCacheAsync);
+        AddCard("Cleanup", "Windows error reports", "Removes queued and archived Windows Error Reporting files. Does not affect Windows system files.", "LOW RISK", false, CleanupEngine.CleanWindowsErrorReportsAsync);
         AddCard("Cleanup", "Recycle Bin", "Permanently empties the Recycle Bin on all drives. Review its contents first; this cannot be undone.", "PERMANENT", false, CleanupEngine.EmptyRecycleBinAsync);
         AddCard("Network", "Flush DNS cache", "Clears the local DNS resolver cache. This does not delete personal data.", "SAFE", false, CleanupEngine.FlushDnsAsync);
-        AddCard("Maintenance", "DISM component cleanup", "Runs Microsoft's component-store cleanup operation. It can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
-        AddCard("Maintenance", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "MAINTENANCE", false, CleanupEngine.RunSfcAsync);
-        AddCard("Windows Update", "Update download cache", "Not enabled in this first build. Service-aware cleanup will be added after testing.", "COMING SOON", false, null, true);
+        AddCard("Maintenance", "DISM component cleanup", "Cleans up superseded Windows component versions. This can take several minutes.", "MAINTENANCE", false, CleanupEngine.RunDismCleanupAsync);
+        AddCard("Maintenance", "DISM RestoreHealth", "Checks and repairs the Windows component store using Windows Update when needed.", "REPAIR", false, CleanupEngine.RunDismRestoreHealthAsync);
+        AddCard("Maintenance", "System File Checker", "Scans protected Windows system files and attempts repairs when needed.", "REPAIR", false, CleanupEngine.RunSfcAsync);
+        AddCard("Maintenance", "Check system drive", "Runs an online scan of the Windows system drive without scheduling an offline repair.", "SCAN", false, CleanupEngine.RunDiskScanAsync);
     }
 
     private void AddCard(string category, string title, string description, string risk, bool defaultSelected, Func<IProgress<string>, CancellationToken, Task>? action, bool disabled = false)
@@ -312,7 +315,12 @@ public sealed class MainForm : Form
         var selected = _cards.Where(c => c.Selected && !c.Disabled && c.Action != null).ToList();
         if (selected.Count == 0) return;
         var names = string.Join(", ", selected.Select(x => x.OperationTitle));
-        if (MessageBox.Show($"Run {selected.Count} selected operation(s)?\n\n{names}\n\nSome operations modify Windows caches or system components. Continue?", "Confirm operations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        var confirmation = $"Run {selected.Count} selected operation(s)?\n\n{names}\n\nSome operations modify Windows caches or system components. Continue?";
+        if (selected.Any(x => x.OperationTitle == "DISM component cleanup"))
+            confirmation += "\n\nIMPORTANT: DISM component cleanup can take several minutes. Please don't hurry, interrupt it, or close the app while it is running. Keep your PC connected to power.";
+        if (selected.Any(x => x.OperationTitle == "DISM RestoreHealth"))
+            confirmation += "\n\nIMPORTANT: DISM RestoreHealth can take a long time and may download repair files. Please be patient and keep your PC connected to power.";
+        if (MessageBox.Show(confirmation, "Confirm operations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
 
         var runCts = new CancellationTokenSource();
@@ -324,6 +332,7 @@ public sealed class MainForm : Form
         _status.Text = "Running...";
         Log("START", $"Starting {selected.Count} operation(s).");
 
+        var failures = 0;
         try
         {
             for (int i = 0; i < selected.Count; i++)
@@ -338,11 +347,24 @@ public sealed class MainForm : Form
                     Log("DONE", $"{card.OperationTitle} completed.");
                 }
                 catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { Log("ERROR", $"{card.OperationTitle}: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    failures++;
+                    Log("ERROR", $"{card.OperationTitle}: {ex.Message}");
+                }
                 _progress.Value = Math.Min(i + 1, _progress.Maximum);
             }
-            _status.Text = "Completed";
-            Log("DONE", "Selected operations finished.");
+            _status.Text = failures == 0 ? "Completed" : "Completed with issues";
+            Log(failures == 0 ? "DONE" : "WARN", failures == 0
+                ? "All selected tweaks completed successfully."
+                : $"Run finished with {failures} operation(s) reporting errors.");
+            MessageBox.Show(
+                failures == 0
+                    ? $"All {selected.Count} selected tweaks have been completed successfully."
+                    : $"The run has finished. {selected.Count - failures} operation(s) completed and {failures} operation(s) reported errors. Check the execution log for details.",
+                failures == 0 ? "All tweaks completed" : "Tweaks completed with issues",
+                MessageBoxButtons.OK,
+                failures == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (OperationCanceledException)
         {
