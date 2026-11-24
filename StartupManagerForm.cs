@@ -269,7 +269,7 @@ internal sealed class StartupManagerForm : Form
         {
             using var process = Process.Start(new ProcessStartInfo("powershell.exe")
             {
-                Arguments = "-NoProfile -NonInteractive -Command \\"" + script.Replace("\\\"", "\\\\\\"") + "\\"",
+                Arguments = "-NoProfile -NonInteractive -Command \"" + script.Replace("\"", "\\\"") + "\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
