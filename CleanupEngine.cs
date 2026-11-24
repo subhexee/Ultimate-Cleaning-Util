@@ -34,7 +34,11 @@ internal static class CleanupEngine
         Task.Run(() =>
         {
             if (!Directory.Exists(path)) { progress.Report($"Folder not found; skipped: {path}"); return; }
-            foreach (var file in Directory.EnumerateFiles(path, pattern, SearchOption.TopDirectoryOnly))
+            string[] files;
+            try { files = Directory.GetFiles(path, pattern, SearchOption.TopDirectoryOnly); }
+            catch (Exception ex) { progress.Report($"Could not scan {path}: {ex.Message}"); return; }
+
+            foreach (var file in files)
             {
                 token.ThrowIfCancellationRequested();
                 TryDeleteFile(file, progress);
@@ -43,63 +47,128 @@ internal static class CleanupEngine
 
     private static void DeleteContents(string root, IProgress<string> progress, CancellationToken token)
     {
-        // Deliberately do not recurse through reparse points/junctions.
-        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly))
+        string[] files;
+        string[] directories;
+        try
+        {
+            files = Directory.GetFiles(root, "*", SearchOption.TopDirectoryOnly);
+            directories = Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly);
+        }
+        catch (Exception ex)
+        {
+            progress.Report($"Could not scan folder {root}: {ex.Message}");
+            return;
+        }
+
+        foreach (var file in files)
         {
             token.ThrowIfCancellationRequested();
             TryDeleteFile(file, progress);
         }
-        foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
+
+        foreach (var dir in directories)
         {
             token.ThrowIfCancellationRequested();
             try
             {
                 var info = new DirectoryInfo(dir);
-                if ((info.Attributes & FileAttributes.ReparsePoint) != 0) { progress.Report($"Skipped reparse point: {dir}"); continue; }
+                if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    progress.Report($"Skipped reparse point: {dir}");
+                    continue;
+                }
+
                 DeleteContents(dir, progress, token);
-                try { Directory.Delete(dir, false); } catch { }
+                try
+                {
+                    Directory.Delete(dir, false);
+                    progress.Report($"Removed empty folder: {Path.GetFileName(dir)}");
+                }
+                catch (Exception ex)
+                {
+                    progress.Report($"Kept folder {Path.GetFileName(dir)}: {ex.Message}");
+                }
             }
-            catch (Exception ex) { progress.Report($"Skipped folder: {Path.GetFileName(dir)} ({ex.Message})"); }
+            catch (Exception ex)
+            {
+                progress.Report($"Skipped folder {Path.GetFileName(dir)}: {ex.Message}");
+            }
         }
     }
 
     private static void TryDeleteFile(string file, IProgress<string> progress)
     {
-        try { File.SetAttributes(file, FileAttributes.Normal); File.Delete(file); }
-        catch (Exception ex) { progress.Report($"Skipped locked/inaccessible file: {Path.GetFileName(file)} ({ex.Message})"); }
+        try
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+            File.Delete(file);
+            progress.Report($"Deleted: {Path.GetFileName(file)}");
+        }
+        catch (Exception ex)
+        {
+            progress.Report($"Skipped locked/inaccessible file: {Path.GetFileName(file)} ({ex.Message})");
+        }
     }
 
     public static Task FlushDnsAsync(IProgress<string> progress, CancellationToken token) =>
-        RunProcessAsync("ipconfig.exe", "/flushdns", progress, token);
+        RunProcessAsync("ipconfig.exe", new[] { "/flushdns" }, progress, token);
 
     public static Task RunDismCleanupAsync(IProgress<string> progress, CancellationToken token) =>
-        RunProcessAsync("dism.exe", "/Online /Cleanup-Image /StartComponentCleanup /NoRestart", progress, token);
+        RunProcessAsync("dism.exe", new[] { "/Online", "/Cleanup-Image", "/StartComponentCleanup", "/NoRestart" }, progress, token);
 
     public static Task RunSfcAsync(IProgress<string> progress, CancellationToken token) =>
-        RunProcessAsync("sfc.exe", "/scannow", progress, token);
+        RunProcessAsync("sfc.exe", new[] { "/scannow" }, progress, token);
 
-    private static async Task RunProcessAsync(string file, string args, IProgress<string> progress, CancellationToken token)
+    private static async Task RunProcessAsync(string file, string[] args, IProgress<string> progress, CancellationToken token)
     {
-        progress.Report($"Starting {file} {args}");
+        token.ThrowIfCancellationRequested();
+        progress.Report($"Starting {file} {string.Join(" ", args)}");
+
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = file, Arguments = args, UseShellExecute = false,
-                RedirectStandardOutput = true, RedirectStandardError = true,
+                FileName = file,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true
             },
             EnableRaisingEvents = true
         };
-        process.Start();
-        var stdout = process.StandardOutput.ReadToEndAsync(token);
-        var stderr = process.StandardError.ReadToEndAsync(token);
-        await process.WaitForExitAsync(token);
-        var output = await stdout;
-        var error = await stderr;
-        foreach (var line in (output + Environment.NewLine + error).Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries).TakeLast(18))
-            progress.Report(line.Trim());
+
+        foreach (var arg in args)
+            process.StartInfo.ArgumentList.Add(arg);
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data)) progress.Report(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data)) progress.Report("STDERR: " + e.Data);
+        };
+
+        if (!process.Start()) throw new InvalidOperationException($"Could not start {file}.");
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            await process.WaitForExitAsync(token);
+            process.WaitForExit();
+        }
+        catch (OperationCanceledException)
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+            try { await process.WaitForExitAsync(); } catch { }
+            throw;
+        }
+
         if (process.ExitCode != 0)
-            throw new InvalidOperationException($"{file} exited with code {process.ExitCode}.");
+            throw new InvalidOperationException($"{file} exited with code {process.ExitCode}. Check the execution log for details.");
+        progress.Report($"{file} finished successfully (exit code 0).");
     }
 }
