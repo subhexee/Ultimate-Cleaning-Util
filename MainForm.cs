@@ -346,16 +346,20 @@ public sealed class MainForm : Form
             };
         }
 
+        RefreshFilterButtonStyles();
+        _operations.PerformLayout();
+    }
+
+    private void RefreshFilterButtonStyles()
+    {
         foreach (Control control in _filterBar.Controls)
         {
             if (control is not Button button) continue;
-            var selected = Equals(button.Tag, filter);
+            var selected = Equals(button.Tag, _activeFilter);
             button.BackColor = selected ? Accent : (_dark ? DarkCard : Color.FromArgb(232, 237, 243));
             button.ForeColor = selected ? Color.White : (_dark ? DarkText : Color.FromArgb(30, 39, 52));
             button.FlatAppearance.BorderColor = selected ? Accent : (_dark ? Color.FromArgb(48, 62, 82) : Color.FromArgb(210, 218, 228));
         }
-
-        _operations.PerformLayout();
     }
 
     private void UpdateSelection()
@@ -470,6 +474,7 @@ public sealed class MainForm : Form
         _log.BackColor = _dark ? Color.FromArgb(10, 15, 23) : Color.FromArgb(242, 245, 248);
         _log.ForeColor = _dark ? Color.FromArgb(185, 205, 220) : Color.FromArgb(45, 57, 70);
         foreach (var card in _cards) card.SetTheme(_dark, DarkCard, Color.White, DarkText, Color.FromArgb(30, 39, 52), DarkMuted, Accent);
+        RefreshFilterButtonStyles();
         Invalidate(true);
     }
 
