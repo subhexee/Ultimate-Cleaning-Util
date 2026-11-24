@@ -28,6 +28,7 @@ public sealed class MainForm : Form
     private Label _pageTitle = new();
     private Label _toolsSectionTitle = new();
     private Button? _startupFilterButton;
+    private Button? _selectAllButton;
     private StartupManagerForm? _startupForm;
 
     private readonly Color DarkBg = Color.FromArgb(15, 21, 31);
@@ -183,9 +184,9 @@ public sealed class MainForm : Form
         _toolsSectionTitle = new Label { Text = "All tools", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) };
         contentHeader.Controls.Add(_toolsSectionTitle);
         contentHeader.Controls.Add(new Label { Text = "Click tweaks to select them, then run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
-        var selectAll = new Button { Name = "select-all-tools", Text = "Select all", Width = 112, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(808, 10), FlatStyle = FlatStyle.Flat };
-        selectAll.Click += (_, _) => ToggleVisibleSelection(selectAll);
-        contentHeader.Controls.Add(selectAll);
+        _selectAllButton = new Button { Name = "select-all-tools", Text = "Select all", Width = 112, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(808, 10), FlatStyle = FlatStyle.Flat };
+        _selectAllButton.Click += (_, _) => ToggleVisibleSelection(_selectAllButton);
+        contentHeader.Controls.Add(_selectAllButton);
         _main.Controls.Add(contentHeader);
 
         _operations.Dock = DockStyle.Fill;
@@ -494,6 +495,7 @@ public sealed class MainForm : Form
         }
 
         RefreshFilterButtonStyles();
+        UpdateSelectAllButtonText();
         _operations.PerformLayout();
     }
 
@@ -508,8 +510,16 @@ public sealed class MainForm : Form
         foreach (var card in visibleCards)
             card.Selected = selectAll;
 
-        button.Text = selectAll ? "Deselect all" : "Select all";
         UpdateSelection();
+    }
+
+    private void UpdateSelectAllButtonText()
+    {
+        if (_selectAllButton == null) return;
+        var visibleCards = _cards.Where(card => card.Visible && !card.Disabled && card.Action != null).ToList();
+        _selectAllButton.Text = visibleCards.Count > 0 && visibleCards.All(card => card.Selected)
+            ? "Deselect all"
+            : "Select all";
     }
 
     private void RefreshFilterButtonStyles()
@@ -529,6 +539,7 @@ public sealed class MainForm : Form
         var count = _cards.Count(c => c.Selected && !c.Disabled);
         _selectionCount.Text = count == 1 ? "1 tweak selected" : $"{count} tweaks selected";
         if (_selectionValue != null) _selectionValue.Text = count.ToString();
+        UpdateSelectAllButtonText();
         _runButton.Enabled = count > 0 && _runCts == null;
         _skipButton.Enabled = _operationCts != null && _runCts != null;
     }
