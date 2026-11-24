@@ -29,3 +29,5 @@ jobs:
         with:
           name: Ultimate-Cleaning-Utility-V3
           path: publish/
+
+# PR validation enabled for V3.1 stability changes.
