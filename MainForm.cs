@@ -27,6 +27,8 @@ public sealed class MainForm : Form
     private Panel _console = new();
     private Label _pageTitle = new();
     private Label _toolsSectionTitle = new();
+    private Button? _startupFilterButton;
+    private StartupManagerForm? _startupForm;
 
     private readonly Color DarkBg = Color.FromArgb(15, 21, 31);
     private readonly Color DarkPanel = Color.FromArgb(24, 33, 47);
@@ -156,7 +158,7 @@ public sealed class MainForm : Form
         };
         _filterBar.Controls.Add(separator);
 
-        var startupFilter = new Button
+        _startupFilterButton = new Button
         {
             Name = "startup-tool",
             Text = "Startup",
@@ -167,9 +169,14 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             Cursor = Cursors.Hand
         };
-        startupFilter.FlatAppearance.BorderSize = 1;
-        startupFilter.Click += (_, _) => ShowPage("Startup");
-        _filterBar.Controls.Add(startupFilter);
+        _startupFilterButton.FlatAppearance.BorderSize = 1;
+        _startupFilterButton.Click += (_, _) =>
+        {
+            _startupFilterButton.Text = "– Launching Startup...";
+            _startupFilterButton.Enabled = false;
+            BeginInvoke(new Action(() => ShowPage("Startup")));
+        };
+        _filterBar.Controls.Add(_startupFilterButton);
         _main.Controls.Add(_filterBar);
 
         var contentHeader = new Panel { Dock = DockStyle.Top, Height = 58 };
@@ -402,9 +409,37 @@ public sealed class MainForm : Form
     private void ShowPage(string page)
     {
         if (page != "Startup") return;
-        using var startup = new StartupManagerForm();
-        startup.ShowDialog(this);
-        Log("STARTUP", "Startup manager closed. Refresh it to view any changes made outside the utility.");
+        try
+        {
+            if (_startupForm != null && !_startupForm.IsDisposed)
+            {
+                if (_startupForm.WindowState == FormWindowState.Minimized)
+                    _startupForm.WindowState = FormWindowState.Normal;
+                _startupForm.Activate();
+            }
+            else
+            {
+                _startupForm = new StartupManagerForm();
+                _startupForm.FormClosed += (_, _) =>
+                {
+                    _startupForm = null;
+                    Log("STARTUP", "Startup manager closed.");
+                };
+                _startupForm.Show(this);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not launch Startup Manager.\\n\\n" + ex.Message, "EXE COMPUTERS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            if (_startupFilterButton != null)
+            {
+                _startupFilterButton.Text = "Startup";
+                _startupFilterButton.Enabled = true;
+            }
+        }
     }
 
     private bool _consoleExpanded;
