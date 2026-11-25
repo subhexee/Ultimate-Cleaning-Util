@@ -308,7 +308,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         _scan.Enabled = _selected != null && !_busy;
     }
 
-    private void UninstallSelected()
+    private async void UninstallSelected()
     {
         var app = _selected;
         if (app == null) { MessageBox.Show(this, "Select an application first."); return; }
@@ -342,20 +342,83 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
                 var args = split < 0 ? "" : command[(split + 1)..];
                 psi = new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args };
             }
-            Process.Start(psi);
-            _status.Text = "Uninstaller launched. Finish its prompts, then select the same app and run Deep scan leftovers.";
+
+            using var uninstallProcess = Process.Start(psi);
+            if (uninstallProcess == null) throw new InvalidOperationException("Windows could not start the registered uninstaller.");
+            _uninstall.Enabled = false;
+            _status.Text = "Uninstaller is running. This will update when it closes...";
             WriteLog("Launched the registered uninstall command for " + app.Name);
+            await uninstallProcess.WaitForExitAsync();
+
+            if (IsDisposed) return;
+            _status.Text = "Uninstaller process finished for " + app.Name + ".";
+            WriteLog("Uninstaller process exited for " + app.Name + " (exit code " + uninstallProcess.ExitCode + ").");
+            _uninstall.Enabled = _selected != null && !_busy;
+
+            if (ShowUninstallCompletedPrompt(app))
+                await ScanLeftoversAsync(app);
         }
         catch (Exception ex)
         {
-            WriteLog("Uninstall launch failed: " + ex.Message);
+            if (!IsDisposed) _uninstall.Enabled = _selected != null && !_busy;
+            WriteLog("Uninstall launch/wait failed: " + ex.Message);
             MessageBox.Show(this, ex.Message, "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
-    private async Task ScanLeftoversAsync()
+    private bool ShowUninstallCompletedPrompt(AppEntry app)
     {
-        var app = _selected;
+        using var prompt = new Form
+        {
+            Text = "Uninstallation completed",
+            Icon = Branding.CreateIcon(),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            ClientSize = new Size(440, 165),
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            BackColor = BackColor,
+            ForeColor = ForeColor,
+            Font = Font
+        };
+        prompt.Controls.Add(new Label
+        {
+            Text = "The uninstaller has closed for:\n" + app.Name + "\n\nWould you like to scan for leftover files and registry entries?",
+            Location = new Point(18, 16),
+            Size = new Size(404, 78),
+            ForeColor = ForeColor
+        });
+        var scanButton = new Button
+        {
+            Text = "Scan leftovers",
+            Location = new Point(190, 112),
+            Size = new Size(130, 34),
+            DialogResult = DialogResult.Yes,
+            BackColor = Color.FromArgb(35, 105, 75),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        var closeButton = new Button
+        {
+            Text = "Close",
+            Location = new Point(330, 112),
+            Size = new Size(90, 34),
+            DialogResult = DialogResult.No,
+            BackColor = Color.FromArgb(29, 40, 56),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        prompt.Controls.Add(scanButton);
+        prompt.Controls.Add(closeButton);
+        prompt.AcceptButton = scanButton;
+        prompt.CancelButton = closeButton;
+        return prompt.ShowDialog(this) == DialogResult.Yes;
+    }
+
+    private async Task ScanLeftoversAsync(AppEntry? target = null)
+    {
+        var app = target ?? _selected;
         if (app == null) { MessageBox.Show(this, "Select the application you have just uninstalled."); return; }
         if (MessageBox.Show(this,
             "Scan common application-data folders and the application-specific Software registry locations for matches to:\n\n" +
