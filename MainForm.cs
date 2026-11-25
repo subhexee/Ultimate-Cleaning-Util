@@ -134,6 +134,7 @@ public sealed class MainForm : Form
         _featuredTools.Height = 48;
         _featuredTools.FlowDirection = FlowDirection.LeftToRight;
         _featuredTools.WrapContents = false;
+        _featuredTools.AutoScroll = true;
         _featuredTools.Padding = new Padding(0, 1, 0, 3);
         _featuredTools.Margin = new Padding(0);
         AddFeaturedTool("App Uninstaller", () => AdvancedToolForms.ShowUninstaller(this));
@@ -151,6 +152,7 @@ public sealed class MainForm : Form
         _filterBar.Height = 44;
         _filterBar.FlowDirection = FlowDirection.LeftToRight;
         _filterBar.WrapContents = false;
+        _filterBar.AutoScroll = true;
         _filterBar.Padding = new Padding(0, 2, 0, 4);
         _filterBar.Margin = new Padding(0);
         foreach (var filter in new[] { "All", "Cleanup", "Maintenance", "Repair", "Diagnostics", "Network", "Security", "System Information" })
@@ -200,6 +202,7 @@ public sealed class MainForm : Form
         _selectAllButton = new Button { Name = "select-all-tools", Text = "Select all", Width = 112, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(808, 10), FlatStyle = FlatStyle.Flat };
         _selectAllButton.Click += (_, _) => ToggleVisibleSelection(_selectAllButton);
         contentHeader.Controls.Add(_selectAllButton);
+        contentHeader.Resize += (_, _) => _selectAllButton.Left = contentHeader.ClientSize.Width - _selectAllButton.Width;
         _main.Controls.Add(contentHeader);
 
         _operations.Dock = DockStyle.Fill;
@@ -807,16 +810,19 @@ public bool Selected
         _category.Font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
         _category.Location = new Point(12, 10); _category.AutoSize = true;
         _title.Text = title; _title.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-        _title.Location = new Point(12, 31); _title.AutoSize = true;
+        _title.Location = new Point(12, 31); _title.Size = new Size(238, 25);
+        _title.AutoEllipsis = true;
+        _title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _description.Text = description; _description.Font = new Font("Segoe UI", 8.5f);
         _description.Location = new Point(12, 57); _description.Size = new Size(270, 42);
         _description.AutoEllipsis = true;
+        _description.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _risk.Text = risk; _risk.Font = new Font("Segoe UI", 7, FontStyle.Bold);
         _risk.Location = new Point(12, 111); _risk.AutoSize = true;
         _selected = selected;
         _check.Size = new Size(24, 24);
         _check.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _check.Location = new Point(260, 9);
+        _check.Location = new Point(Width - _check.Width - 12, 9);
         _check.BackColor = Color.Transparent;
         _check.Cursor = disabled ? Cursors.Default : Cursors.Hand;
         _check.Enabled = !disabled;
@@ -831,6 +837,12 @@ public bool Selected
         };
         _check.Click += (_, _) => ToggleSelection();
         Controls.AddRange(new Control[] { _category, _title, _description, _risk, _check });
+        Resize += (_, _) =>
+        {
+            _check.Left = ClientSize.Width - _check.Width - 12;
+            _title.Width = Math.Max(80, ClientSize.Width - 62);
+            _description.Width = Math.Max(100, ClientSize.Width - 30);
+        };
 
         // Clicking the card's text or empty space toggles its visible checkbox.
         Click += (_, _) => ToggleSelection();
