@@ -159,6 +159,7 @@ public sealed class MainForm : Form
         AddFeaturedTool("Duplicate Finder", () => AdvancedToolForms.ShowDuplicateFinder(this));
         AddFeaturedTool("Gaming Mode", () => AdvancedToolForms.ShowGaming(this));
         AddFeaturedTool("Windows Debloat", () => AdvancedToolForms.ShowDebloat(this));
+        AddFeaturedTool("Bootable USB", () => AdvancedToolForms.ShowUsbCreator(this));
         AddFeaturedTool("Startup Manager", () => LaunchStartupFeatured());
         _main.Controls.Add(_featuredTools);
 
