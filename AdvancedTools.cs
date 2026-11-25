@@ -382,13 +382,14 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
                 if (software == null) continue;
                 foreach (var vendorName in software.GetSubKeyNames())
                 {
-                    if (MatchesProductName(vendorName, app.Name, tokens))
-                        found.Add(new LeftoverCandidate(ToRegistryPath(hive, @"SOFTWARE\" + vendorName), "Registry key", hive + " · " + view, hive, view));
                     try
                     {
                         using var vendor = software.OpenSubKey(vendorName);
                         if (vendor == null) continue;
-                        foreach (var productName in vendor.GetSubKeyNames())
+                        var productKeys = vendor.GetSubKeyNames();
+                        if (productKeys.Length == 0 && MatchesProductName(vendorName, app.Name, tokens))
+                            found.Add(new LeftoverCandidate(ToRegistryPath(hive, @"SOFTWARE\" + vendorName), "Registry key", hive + " · " + view, hive, view));
+                        foreach (var productName in productKeys)
                         {
                             if (!MatchesProductName(productName, app.Name, tokens)) continue;
                             var relative = @"SOFTWARE\" + vendorName + @"\" + productName;
