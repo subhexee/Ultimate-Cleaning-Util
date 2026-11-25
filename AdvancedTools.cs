@@ -162,7 +162,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         _apps.SelectedIndexChanged += (_, _) =>
         {
             _selected = _apps.SelectedItems.Count == 0 ? null : _apps.SelectedItems[0].Tag as AppEntry;
-            _uninstall.Enabled = _selected != null && !string.IsNullOrWhiteSpace(_selected.Command) && !_busy;
+            _uninstall.Enabled = _selected != null && (!string.IsNullOrWhiteSpace(_selected.Command) || _selected.IsMsix) && !_busy;
             _scan.Enabled = _selected != null && !_busy;
         };
         Controls.Add(_apps);
@@ -253,7 +253,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             _allApps.AddRange(entries);
             RenderApps();
             _status.Text = _allApps.Count + " installed application entries found.";
-            WriteLog("Inventory refreshed. Sources: per-user and machine uninstall registrations, 32-bit and 64-bit views.");
+            WriteLog("Inventory refreshed. Sources: registry uninstall entries (32/64-bit) and current-user Microsoft Store/MSIX packages.");
         }
         catch (Exception ex)
         {
@@ -299,8 +299,53 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             }
             catch { }
         }
+        // Microsoft Store apps (including WhatsApp Desktop) are registered as AppX/MSIX
+        // packages, not necessarily in the classic uninstall registry.
+        try
+        {
+            var script = "Get-AppxPackage | Select-Object Name,PackageFullName,Version,Publisher,InstallLocation | ConvertTo-Json -Compress";
+            var start = new ProcessStartInfo("powershell.exe")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            start.ArgumentList.Add("-NoProfile");
+            start.ArgumentList.Add("-NonInteractive");
+            start.ArgumentList.Add("-Command");
+            start.ArgumentList.Add(script);
+            using var process = Process.Start(start);
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    using var document = JsonDocument.Parse(output);
+                    var packages = document.RootElement.ValueKind == JsonValueKind.Array
+                        ? document.RootElement.EnumerateArray().ToList()
+                        : new List<JsonElement> { document.RootElement };
+                    foreach (var package in packages)
+                    {
+                        string Read(string property) =>
+                            package.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null
+                                ? value.ToString() : "";
+                        var packageName = Read("Name");
+                        var fullName = Read("PackageFullName");
+                        if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(fullName)) continue;
+                        var displayName = packageName;
+                        entries.Add(new AppEntry(displayName, Read("Publisher"), Read("Version"),
+                            Read("InstallLocation"), "MSIX_PACKAGE", "", "—",
+                            RegistryHive.CurrentUser, RegistryView.Default, fullName, true, packageName));
+                    }
+                }
+            }
+        }
+        catch { /* Keep classic desktop-app inventory available if AppX enumeration is unavailable. */ }
+
         return entries
-            .GroupBy(e => e.Name + "|" + e.Command, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(e => e.IsMsix ? "MSIX|" + e.PackageFullName : e.Name + "|" + e.Command, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -336,7 +381,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         }
         _apps.EndUpdate();
         _status.Text = _apps.Items.Count + " of " + _allApps.Count + " applications shown.";
-        _uninstall.Enabled = _selected != null && !string.IsNullOrWhiteSpace(_selected.Command) && !_busy;
+        _uninstall.Enabled = _selected != null && (!string.IsNullOrWhiteSpace(_selected.Command) || _selected.IsMsix) && !_busy;
         _scan.Enabled = _selected != null && !_busy;
     }
 
@@ -344,9 +389,9 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
     {
         var app = _selected;
         if (app == null) { MessageBox.Show(this, "Select an application first."); return; }
-        if (string.IsNullOrWhiteSpace(app.Command))
+        if (!app.IsMsix && string.IsNullOrWhiteSpace(app.Command))
         {
-            MessageBox.Show(this, "This application has no registered uninstall command. Use the forced leftover scan to inspect its files and registry entries.", "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "This application has no registered uninstall command. Use the leftover scan to inspect its files and registry entries.", "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -358,8 +403,8 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
 
         try
         {
-            var psi = BuildUninstallStartInfo(app);
-            if (app.Hive == RegistryHive.LocalMachine && !IsAdministrator())
+            var psi = app.IsMsix ? BuildMsixUninstallStartInfo(app) : BuildUninstallStartInfo(app);
+            if (!app.IsMsix && app.Hive == RegistryHive.LocalMachine && !IsAdministrator())
                 psi.Verb = "runas";
 
             _uninstall.Enabled = false;
@@ -383,7 +428,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             for (var attempt = 0; attempt < 30; attempt++)
             {
                 if (IsDisposed) return;
-                removed = await Task.Run(() => !IsRegistrationPresent(app));
+                removed = await Task.Run(() => app.IsMsix ? !IsMsixPackagePresent(app.PackageName) : !IsRegistrationPresent(app));
                 if (removed) break;
                 await Task.Delay(1000);
             }
@@ -428,7 +473,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             if (!IsDisposed)
             {
                 _refresh.Enabled = !_busy;
-                _uninstall.Enabled = _selected != null && !string.IsNullOrWhiteSpace(_selected.Command) && !_busy;
+                _uninstall.Enabled = _selected != null && (!string.IsNullOrWhiteSpace(_selected.Command) || _selected.IsMsix) && !_busy;
                 _scan.Enabled = _selected != null && !_busy;
             }
         }
@@ -493,6 +538,52 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             UseShellExecute = true,
             WorkingDirectory = File.Exists(exe) ? Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory : Environment.CurrentDirectory
         };
+    }
+
+    private static ProcessStartInfo BuildMsixUninstallStartInfo(AppEntry app)
+    {
+        if (string.IsNullOrWhiteSpace(app.PackageName))
+            throw new InvalidOperationException("The Store package identity is missing.");
+        var safeName = app.PackageName.Replace("'", "''");
+        var script = "Get-AppxPackage -Name '" + safeName + "' | Remove-AppxPackage -ErrorAction Stop";
+        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-EncodedCommand");
+        psi.ArgumentList.Add(encoded);
+        return psi;
+    }
+
+    private static bool IsMsixPackagePresent(string packageName)
+    {
+        try
+        {
+            var safeName = packageName.Replace("'", "''");
+            var script = "(Get-AppxPackage -Name '" + safeName + "' | Measure-Object).Count";
+            var start = new ProcessStartInfo("powershell.exe")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            start.ArgumentList.Add("-NoProfile");
+            start.ArgumentList.Add("-NonInteractive");
+            start.ArgumentList.Add("-Command");
+            start.ArgumentList.Add(script);
+            using var process = Process.Start(start);
+            if (process == null) return true;
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
+            return process.ExitCode != 0 || !int.TryParse(output, out var count) || count > 0;
+        }
+        catch { return true; }
     }
 
     private static bool IsRegistrationPresent(AppEntry app)
@@ -754,7 +845,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
     {
         _busy = busy;
         _refresh.Enabled = !busy;
-        _uninstall.Enabled = !busy && _selected != null && !string.IsNullOrWhiteSpace(_selected.Command);
+        _uninstall.Enabled = !busy && _selected != null && (!string.IsNullOrWhiteSpace(_selected.Command) || _selected.IsMsix);
         _scan.Enabled = !busy && _selected != null;
         _remove.Enabled = !busy && _leftovers.Items.Count > 0;
         _search.Enabled = !busy;
@@ -762,7 +853,8 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
     }
 
     private sealed record AppEntry(string Name, string Publisher, string Version, string Location,
-        string Command, string InstallDate, string Size, RegistryHive Hive, RegistryView View, string RegistryKeyName);
+        string Command, string InstallDate, string Size, RegistryHive Hive, RegistryView View, string RegistryKeyName,
+        bool IsMsix = false, string PackageName = "");
     private sealed record LeftoverCandidate(string Path, string Kind, string Description, RegistryHive? Hive, RegistryView? View);
 }
 
