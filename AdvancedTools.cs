@@ -42,6 +42,7 @@ internal static class AdvancedToolForms
     public static void ShowDuplicateFinder(IWin32Window owner) { using var form = new DuplicateFinderForm(); form.ShowDialog(owner); }
     public static void ShowGaming(IWin32Window owner) { using var form = new GamingOptimizationForm(); form.ShowDialog(owner); }
     public static void ShowDebloat(IWin32Window owner) { using var form = new DebloatForm(); form.ShowDialog(owner); }
+    public static void ShowUsbCreator(IWin32Window owner) { using var form = new UsbMediaCreatorForm(); form.ShowDialog(owner); }
 }
 
 internal abstract class AdvancedToolForm : Form
