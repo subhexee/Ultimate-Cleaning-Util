@@ -595,10 +595,13 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
 
     private bool IsWithinUserProfile(string path)
     {
-        var root = Path.GetFullPath(_userRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var candidate = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(_userRoot).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+        var full = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
+        var root = Path.GetFullPath(_userRoot).TrimEnd(Path.DirectorySeparatorChar);
+        if (!(full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(full, root, StringComparison.OrdinalIgnoreCase))) return false;
+        var relative = Path.GetRelativePath(root, full);
+        return relative == "." || !relative.Split(Path.DirectorySeparatorChar).Any(part =>
+            ProtectedDirectoryNames.Contains(part) || part.StartsWith(".", StringComparison.Ordinal));
     }
 
     private async Task ScanAsync()
@@ -692,9 +695,10 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
                 {
                     var attrs = File.GetAttributes(file);
                     if ((attrs & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0) continue;
-                    yield return file;
                 }
-                catch { }
+                catch { continue; }
+                yield return file;
+                /* file attributes have been checked before yielding */
             }
             if (!recursive) continue;
             string[] dirs;
