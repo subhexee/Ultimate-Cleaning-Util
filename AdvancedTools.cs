@@ -925,53 +925,113 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
 
 internal sealed class DebloatForm : AdvancedToolForm
 {
-    private readonly ComboBox _preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(24, 105), Width = 220 };
-    private readonly CheckedListBox _items = new() { Location = new Point(24, 150), Size = new Size(900, 270), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, CheckOnClick = true };
-    private readonly Label _description = new() { Location = new Point(260, 109), Size = new Size(640, 32), ForeColor = Color.FromArgb(151, 166, 185) };
+    private readonly ComboBox _preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(24, 105), Width = 250 };
+    private readonly CheckedListBox _items = new() { Location = new Point(24, 158), Size = new Size(900, 500), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, CheckOnClick = true, IntegralHeight = false };
+    private readonly Label _description = new() { Location = new Point(292, 109), Size = new Size(900, 40), ForeColor = Color.FromArgb(151, 166, 185), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
     private readonly List<Tweak> _all = new();
     private readonly string _backupFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ultimate Cleaning Utility", "DebloatBackups");
-    public DebloatForm() : base("Windows Debloat", "CTT-inspired Safe, Balanced and Aggressive presets with individual tweak selection and registry backups.")
+    private readonly Button _apply;
+    private readonly Button _restore;
+    private readonly Button _selectAll;
+    private bool _allSelected;
+
+    public DebloatForm() : base("Windows Debloat", "CTT-inspired Windows privacy and quality-of-life tweaks. Registry changes are limited to the current user and backed up for restoration.")
     {
-        _preset.Items.AddRange(new object[] { "Safe", "Balanced", "Aggressive" });
-        _preset.SelectedIndex = 0;
+        _preset.Items.AddRange(new object[] { "Minimal", "Standard (Recommended)", "Advanced (Safe only)" });
+        _preset.SelectedIndex = 1;
         _preset.SelectedIndexChanged += (_, _) => LoadPreset();
         Controls.AddRange(new Control[] { _preset, _items, _description });
-        AddButton("Apply selected tweaks", 24, 430, 190, ApplySelected);
-        AddButton("Restore latest backup", 224, 430, 180, RestoreLatest);
+
+        _selectAll = AddButton("Select all", 24, 700, 120, ToggleAll);
+        _apply = AddButton("Apply selected tweaks", 154, 700, 190, ApplySelected);
+        _restore = AddButton("Restore latest backup", 354, 700, 190, RestoreLatest);
+
         _all.AddRange(new[]
         {
-            new Tweak("Disable Windows consumer suggestions", 0, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-338388Enabled", 0, "Stops consumer app suggestions and promotional installs."),
-            new Tweak("Disable tips and suggested content", 0, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SoftLandingEnabled", 0, "Turns off tips and suggestion notifications."),
-            new Tweak("Disable Start recommendations", 0, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "Start_IrisRecommendations", 0, "Hides recommendations in Start where supported by this Windows build."),
+            // Minimal: low-impact, reversible suggestion controls.
+            new Tweak("Disable Windows consumer suggestions", 0, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-338388Enabled", 0, "Stops a common source of promoted app suggestions."),
+            new Tweak("Disable tips and suggested content", 0, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SoftLandingEnabled", 0, "Turns off Windows tips and suggestion notifications."),
+            new Tweak("Disable Start recommendations", 0, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "Start_IrisRecommendations", 0, "Hides Start recommendations where supported by this Windows version."),
+
+            // Standard: privacy, telemetry personalization and user-facing promotions.
             new Tweak("Disable advertising ID", 1, @"Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo", "Enabled", 0, "Disables the per-user advertising identifier."),
-            new Tweak("Disable tailored experiences", 1, @"Software\Microsoft\Windows\CurrentVersion\Privacy", "TailoredExperiencesWithDiagnosticDataEnabled", 0, "Stops tailored consumer experiences based on diagnostic data."),
+            new Tweak("Disable tailored experiences", 1, @"Software\Microsoft\Windows\CurrentVersion\Privacy", "TailoredExperiencesWithDiagnosticDataEnabled", 0, "Stops personalized consumer experiences based on diagnostic data."),
             new Tweak("Disable app launch tracking", 1, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "Start_TrackProgs", 0, "Stops Windows tracking app launches for Start suggestions."),
-            new Tweak("Disable feedback notifications", 2, @"Software\Microsoft\Siuf\Rules", "NumberOfSIUFInPeriod", 0, "Disables periodic feedback prompts."),
-            new Tweak("Disable activity history publishing", 2, @"Software\Microsoft\Windows\CurrentVersion\Privacy", "PublishUserActivities", 0, "Disables publishing of user activity history.")
+            new Tweak("Disable feedback prompts", 1, @"Software\Microsoft\Siuf\Rules", "NumberOfSIUFInPeriod", 0, "Disables periodic Windows feedback prompts."),
+            new Tweak("Disable activity history publishing", 1, @"Software\Microsoft\Windows\CurrentVersion\Privacy", "PublishUserActivities", 0, "Stops publishing user activity history; clipboard history is not changed."),
+            new Tweak("Disable lock-screen Spotlight suggestions", 1, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "RotatingLockScreenOverlayEnabled", 0, "Stops promotional tips and overlays on the lock screen."),
+            new Tweak("Disable lock-screen Spotlight content", 1, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "RotatingLockScreenEnabled", 0, "Disables rotating Spotlight backgrounds for this user."),
+            new Tweak("Disable Start app suggestions", 1, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "Start_TrackDocs", 0, "Stops Windows using recent documents to personalize Start and jump-list suggestions."),
+            new Tweak("Disable Search highlights", 1, @"Software\Microsoft\Windows\CurrentVersion\SearchSettings", "IsDynamicSearchBoxEnabled", 0, "Turns off changing Search box highlights and promotional content."),
+            new Tweak("Disable Bing web results in Start search", 1, @"Software\Microsoft\Windows\CurrentVersion\Search", "BingSearchEnabled", 0, "Keeps Start search focused on local results; web results may no longer appear."),
+
+            // Advanced safe subset: optional interface preferences, not service or security changes.
+            new Tweak("Disable Windows welcome experience", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-310093Enabled", 0, "Stops the first-sign-in welcome experience and feature suggestions."),
+            new Tweak("Disable suggested content in Settings", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-353694Enabled", 0, "Hides suggested content in the Settings app where supported."),
+            new Tweak("Disable tips after Windows updates", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-338389Enabled", 0, "Stops post-update tips and recommendation prompts."),
+            new Tweak("Disable File Explorer sync-provider ads", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowSyncProviderNotifications", 0, "Hides promotional notifications in File Explorer."),
+            new Tweak("Hide Widgets button on taskbar", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarDa", 0, "Hides the Widgets taskbar button without uninstalling the Widgets app."),
+            new Tweak("Hide Task View button on taskbar", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowTaskViewButton", 0, "Hides the Task View taskbar button; virtual desktops remain available."),
+            new Tweak("Enable End Task in taskbar menu", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings", "TaskbarEndTask", 1, "Adds the End Task command to the taskbar right-click menu on supported Windows builds."),
+            new Tweak("Disable Copilot button and entry point", 2, @"Software\Policies\Microsoft\Windows\WindowsCopilot", "TurnOffWindowsCopilot", 1, "Hides/disables the Windows Copilot entry point for this user where policy is honored.")
         });
+
+        _preset.SelectedIndex = 1;
         LoadPreset();
-        WriteLog("Presets change current-user settings only. They do not disable Defender, Windows Update, Store, Xbox services, or essential services.");
+        Resize += (_, _) => LayoutDebloat();
+        Shown += (_, _) => LayoutDebloat();
+        WriteLog("Safety scope: current-user registry preferences only. No Defender, Windows Update, Store, Xbox, networking, or essential services are disabled. Every original value is backed up before applying.");
     }
+
+    private void LayoutDebloat()
+    {
+        if (IsDisposed || ClientSize.Width <= 0) return;
+        var width = Math.Max(600, ClientSize.Width - 48);
+        _items.Width = width;
+        _description.Width = Math.Max(260, ClientSize.Width - _description.Left - 24);
+        var actionTop = LogBox.Top - 48;
+        _selectAll.Top = actionTop;
+        _apply.Top = actionTop;
+        _restore.Top = actionTop;
+        _items.Height = Math.Max(180, actionTop - _items.Top - 12);
+        _restore.Left = Math.Max(_apply.Right + 12, ClientSize.Width - _restore.Width - 24);
+    }
+
+    private void ToggleAll()
+    {
+        _allSelected = !_allSelected;
+        for (var i = 0; i < _items.Items.Count; i++)
+            _items.SetItemChecked(i, _allSelected);
+        _selectAll.Text = _allSelected ? "Clear all" : "Select all";
+    }
+
     private void LoadPreset()
     {
         if (_preset.SelectedItem == null) return;
         int level = _preset.SelectedIndex;
         _items.Items.Clear();
-        foreach (var tweak in _all.Where(t => t.Level <= level)) _items.Items.Add(tweak, true);
+        foreach (var tweak in _all.Where(t => t.Level <= level))
+            _items.Items.Add(tweak, true);
+        _allSelected = true;
+        _selectAll.Text = "Clear all";
         _description.Text = level switch
         {
-            0 => "Low-impact suggestions, tips and recommendation changes.",
-            1 => "Safe settings plus advertising and personalization reductions.",
-            _ => "All listed per-user privacy and recommendation changes. Review each item."
+            0 => "Minimal: a small set of low-impact Windows suggestion and recommendation controls.",
+            1 => "Standard: recommended privacy, personalization, telemetry prompts and suggestion reductions.",
+            _ => "Advanced safe subset: Standard plus optional taskbar, Search, Explorer and Copilot preferences. Review each choice."
         };
+        LayoutDebloat();
     }
+
     private void ApplySelected()
     {
         var selected = _items.CheckedItems.Cast<Tweak>().ToList();
         if (selected.Count == 0) { MessageBox.Show(this, "Select at least one tweak."); return; }
         var name = _preset.SelectedItem?.ToString() ?? "Custom";
-        var prompt = "Apply " + selected.Count + " " + name + " tweak(s)?\n\n" + string.Join("\n", selected.Select(t => "• " + t.Name)) + "\n\nA backup of the previous registry values will be saved first.";
-        if (MessageBox.Show(this, prompt, "Confirm debloat preset", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        var prompt = "Apply " + selected.Count + " " + name + " tweak(s)?\n\n" +
+            string.Join("\n", selected.Select(t => "• " + t.Name)) +
+            "\n\nOriginal registry values will be backed up first. Some changes may require restarting Explorer or signing out.";
+        if (MessageBox.Show(this, prompt, "Confirm debloat tweaks", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         try
         {
             Directory.CreateDirectory(_backupFolder);
@@ -980,18 +1040,31 @@ internal sealed class DebloatForm : AdvancedToolForm
             {
                 using var key = Registry.CurrentUser.OpenSubKey(tweak.Path);
                 var exists = key?.GetValueNames().Contains(tweak.ValueName) == true;
-                backup.Add(new SavedTweak { Path = tweak.Path, Name = tweak.ValueName, Exists = exists, Value = exists ? Convert.ToString(key!.GetValue(tweak.ValueName)) : "", Kind = exists ? key!.GetValueKind(tweak.ValueName).ToString() : "DWord" });
+                backup.Add(new SavedTweak
+                {
+                    Path = tweak.Path,
+                    Name = tweak.ValueName,
+                    Exists = exists,
+                    Value = exists ? Convert.ToString(key!.GetValue(tweak.ValueName)) : "",
+                    Kind = exists ? key!.GetValueKind(tweak.ValueName).ToString() : "DWord"
+                });
+            }
+
+            var file = Path.Combine(_backupFolder, "debloat-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
+            File.WriteAllText(file, JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }));
+
+            foreach (var tweak in selected)
+            {
                 using var writable = Registry.CurrentUser.CreateSubKey(tweak.Path, true);
                 writable?.SetValue(tweak.ValueName, tweak.Value, RegistryValueKind.DWord);
                 WriteLog("Applied: " + tweak.Name);
             }
-            var file = Path.Combine(_backupFolder, "debloat-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
-            File.WriteAllText(file, JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }));
             WriteLog("Backup saved: " + file);
-            MessageBox.Show(this, "Selected tweaks applied.\n\nBackup saved to:\n" + file + "\n\nSome settings may require sign-out or restart.", "Debloat complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "Selected tweaks applied.\n\nBackup saved to:\n" + file + "\n\nSome settings may require Explorer restart, sign-out or reboot.", "Debloat complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) { WriteLog("Apply failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Debloat", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
+
     private void RestoreLatest()
     {
         try
@@ -1011,12 +1084,14 @@ internal sealed class DebloatForm : AdvancedToolForm
                     object value = v.Kind == "DWord" && int.TryParse(v.Value, out var number) ? number : v.Value;
                     key.SetValue(v.Name, value, Enum.TryParse<RegistryValueKind>(v.Kind, out var kind) ? kind : RegistryValueKind.String);
                 }
+                WriteLog("Restored: " + v.Path + @"\" + v.Name);
             }
             WriteLog("Restored " + values.Count + " registry values from " + file);
             MessageBox.Show(this, "Latest saved debloat registry values restored. Sign out or restart if required.");
         }
         catch (Exception ex) { WriteLog("Restore failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Restore debloat", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
+
     private sealed record Tweak(string Name, int Level, string Path, string ValueName, int Value, string Description)
     {
         public override string ToString() => Name + " — " + Description;
