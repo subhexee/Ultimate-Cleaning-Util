@@ -1242,10 +1242,10 @@ internal sealed class DebloatForm : AdvancedToolForm
     private readonly Button _selectAll;
     private bool _allSelected;
 
-    public DebloatForm() : base("Windows Debloat", "CTT-inspired Windows privacy and quality-of-life tweaks. Registry changes are limited to the current user and backed up for restoration.")
+    public DebloatForm() : base("Windows Debloat", "Expanded Windows privacy, ads, Search, Explorer and interface cleanup. Safe per-user preferences only; originals are backed up for restoration.")
     {
-        _preset.Items.AddRange(new object[] { "Minimal", "Standard (Recommended)", "Advanced (Safe only)" });
-        _preset.SelectedIndex = 1;
+        _preset.Items.AddRange(new object[] { "Minimal", "Standard (Recommended)", "Maximum Safe" });
+        _preset.SelectedIndex = 2;
         _preset.SelectedIndexChanged += (_, _) => LoadPreset();
         Controls.AddRange(new Control[] { _preset, _items, _description });
 
@@ -1272,7 +1272,7 @@ internal sealed class DebloatForm : AdvancedToolForm
             new Tweak("Disable Search highlights", 1, @"Software\Microsoft\Windows\CurrentVersion\SearchSettings", "IsDynamicSearchBoxEnabled", 0, "Turns off changing Search box highlights and promotional content."),
             new Tweak("Disable Bing web results in Start search", 1, @"Software\Microsoft\Windows\CurrentVersion\Search", "BingSearchEnabled", 0, "Keeps Start search focused on local results; web results may no longer appear."),
 
-            // Advanced safe subset: optional interface preferences, not service or security changes.
+            // Advanced / Maximum Safe: reversible per-user preferences only. No services, drivers or security controls.
             new Tweak("Disable Windows welcome experience", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-310093Enabled", 0, "Stops the first-sign-in welcome experience and feature suggestions."),
             new Tweak("Disable suggested content in Settings", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-353694Enabled", 0, "Hides suggested content in the Settings app where supported."),
             new Tweak("Disable tips after Windows updates", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-338389Enabled", 0, "Stops post-update tips and recommendation prompts."),
@@ -1280,14 +1280,42 @@ internal sealed class DebloatForm : AdvancedToolForm
             new Tweak("Hide Widgets button on taskbar", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarDa", 0, "Hides the Widgets taskbar button without uninstalling the Widgets app."),
             new Tweak("Hide Task View button on taskbar", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowTaskViewButton", 0, "Hides the Task View taskbar button; virtual desktops remain available."),
             new Tweak("Enable End Task in taskbar menu", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings", "TaskbarEndTask", 1, "Adds the End Task command to the taskbar right-click menu on supported Windows builds."),
-            new Tweak("Disable Copilot button and entry point", 2, @"Software\Policies\Microsoft\Windows\WindowsCopilot", "TurnOffWindowsCopilot", 1, "Hides/disables the Windows Copilot entry point for this user where policy is honored.")
+            new Tweak("Disable Copilot button and entry point", 2, @"Software\Policies\Microsoft\Windows\WindowsCopilot", "TurnOffWindowsCopilot", 1, "Hides/disables the Windows Copilot entry point for this user where policy is honored."),
+
+            // Consumer app promotions and automatic suggestion installs.
+            new Tweak("Disable silent suggested-app installs", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SilentInstalledAppsEnabled", 0, "Stops Windows silently installing promoted app suggestions for this user."),
+            new Tweak("Disable pre-installed app suggestions", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "PreInstalledAppsEnabled", 0, "Turns off consumer app recommendations; does not uninstall existing apps."),
+            new Tweak("Disable OEM app recommendations", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "OemPreInstalledAppsEnabled", 0, "Turns off OEM-promoted app suggestions where supported."),
+            new Tweak("Disable Settings pane suggestions", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SystemPaneSuggestionsEnabled", 0, "Hides promotional suggestions shown in Windows Settings."),
+            new Tweak("Disable additional Start menu app promotions", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-338393Enabled", 0, "Disables another Windows consumer-content suggestion channel."),
+            new Tweak("Disable account-related content suggestions", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-353696Enabled", 0, "Turns off supported account and consumer-content suggestion prompts."),
+            new Tweak("Disable device-use suggestion prompts", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-353698Enabled", 0, "Hides supported device-use and setup recommendation prompts."),
+            new Tweak("Disable more lock-screen suggestion content", 2, @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager", "SubscribedContent-338387Enabled", 0, "Turns off an additional consumer suggestion channel where supported."),
+
+            // Search and privacy preferences.
+            new Tweak("Disable web suggestions in Windows Search", 2, @"Software\Policies\Microsoft\Windows\Explorer", "DisableSearchBoxSuggestions", 1, "Suppresses online suggestions in the Windows Search box where policy is honored."),
+            new Tweak("Prevent Search from using device location", 2, @"Software\Microsoft\Windows\CurrentVersion\SearchSettings", "IsLocationEnabled", 0, "Stops Windows Search using location for search suggestions."),
+            new Tweak("Disable Search history on this device", 2, @"Software\Microsoft\Windows\CurrentVersion\SearchSettings", "IsDeviceSearchHistoryEnabled", 0, "Turns off local search-history personalization where supported."),
+
+            // File Explorer: reduce recent-item tracking and improve useful defaults.
+            new Tweak("Hide recent files in File Explorer Home", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer", "ShowRecent", 0, "Stops File Explorer Home from listing recently opened files."),
+            new Tweak("Hide frequent folders in File Explorer Home", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer", "ShowFrequent", 0, "Stops File Explorer Home from listing frequently used folders."),
+            new Tweak("Show file extensions", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "HideFileExt", 0, "Shows extensions such as .exe, .zip and .pdf; improves file-type visibility."),
+            new Tweak("Show status bar in File Explorer", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowStatusBar", 1, "Shows the File Explorer status bar where supported."),
+            new Tweak("Open File Explorer to This PC", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "LaunchTo", 1, "Opens File Explorer to This PC instead of Home or Quick Access."),
+
+            // Optional taskbar and shell decluttering. These do not uninstall features.
+            new Tweak("Hide Chat / Teams taskbar button", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarMn", 0, "Hides the Chat/Teams taskbar entry point where supported."),
+            new Tweak("Hide Cortana taskbar button", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowCortanaButton", 0, "Hides the legacy Cortana taskbar button; does not remove apps."),
+            new Tweak("Hide notification badges on taskbar apps", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarBadges", 0, "Hides numeric badges on taskbar app icons."),
+            new Tweak("Use compact taskbar button grouping", 2, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarGlomLevel", 0, "Uses the standard always-combine taskbar button behavior where supported.")
         });
 
-        _preset.SelectedIndex = 1;
+        _preset.SelectedIndex = 2;
         LoadPreset();
         Resize += (_, _) => LayoutDebloat();
         Shown += (_, _) => LayoutDebloat();
-        WriteLog("Safety scope: current-user registry preferences only. No Defender, Windows Update, Store, Xbox, networking, or essential services are disabled. Every original value is backed up before applying.");
+        WriteLog("Maximum Safe profile loaded by default. Scope is per-user registry preferences only: no Defender, Windows Update, Store, Xbox, networking, drivers, services or essential Windows components are disabled. Every original value is backed up before applying.");
     }
 
     private void LayoutDebloat()
@@ -1325,7 +1353,7 @@ internal sealed class DebloatForm : AdvancedToolForm
         {
             0 => "Minimal: a small set of low-impact Windows suggestion and recommendation controls.",
             1 => "Standard: recommended privacy, personalization, telemetry prompts and suggestion reductions.",
-            _ => "Advanced safe subset: Standard plus optional taskbar, Search, Explorer and Copilot preferences. Review each choice."
+            _ => "Maximum Safe: Standard plus consumer-app promotions, Search privacy, Explorer defaults and optional taskbar decluttering. Review each choice."
         };
         LayoutDebloat();
     }
@@ -1357,7 +1385,7 @@ internal sealed class DebloatForm : AdvancedToolForm
                 });
             }
 
-            var file = Path.Combine(_backupFolder, "debloat-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
+            var file = Path.Combine(_backupFolder, "debloat-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".json");
             File.WriteAllText(file, JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }));
 
             var applied = 0;
