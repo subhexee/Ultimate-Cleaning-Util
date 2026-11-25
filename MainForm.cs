@@ -124,6 +124,19 @@ public sealed class MainForm : Form
         summary.Controls.Add(diskCard);
         summary.Controls.Add(selectedCard);
         summary.Controls.Add(safeCard);
+        void LayoutSummaryCards()
+        {
+            var gap = 10;
+            var cardWidth = Math.Max(190, (summary.ClientSize.Width - gap * 2) / 3);
+            var cards = new[] { diskCard, selectedCard, safeCard };
+            for (var i = 0; i < cards.Length; i++)
+            {
+                cards[i].Left = i * (cardWidth + gap);
+                cards[i].Width = cardWidth;
+            }
+        }
+        summary.Resize += (_, _) => LayoutSummaryCards();
+        LayoutSummaryCards();
         _main.Controls.Add(summary);
 
         var advancedToolsHeader = new Panel { Dock = DockStyle.Top, Height = 23 };
