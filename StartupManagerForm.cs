@@ -25,8 +25,8 @@ internal sealed class StartupManagerForm : Form
         Size = new Size(1120, 720);
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9.5f);
-        BackColor = Color.FromArgb(17, 24, 36);
-        ForeColor = Color.FromArgb(235, 241, 248);
+        BackColor = ThemeManager.IsDark ? Color.FromArgb(17, 24, 36) : Color.FromArgb(245, 247, 250);
+        ForeColor = ThemeManager.IsDark ? Color.FromArgb(235, 241, 248) : Color.FromArgb(30, 39, 52);
 
         var header = new Panel { Height = 104, Padding = new Padding(20, 14, 20, 10), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
         header.BackColor = Color.FromArgb(24, 34, 49);
@@ -121,6 +121,7 @@ internal sealed class StartupManagerForm : Form
         Resize += (_, _) => LayoutStartupPanels();
 
         Shown += async (_, _) => await LoadEntriesAsync();
+        Shown += (_, _) => ThemeManager.Apply(this);
     }
 
     private async Task LoadEntriesAsync()
