@@ -162,7 +162,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         _apps.SelectedIndexChanged += (_, _) =>
         {
             _selected = _apps.SelectedItems.Count == 0 ? null : _apps.SelectedItems[0].Tag as AppEntry;
-            _uninstall.Enabled = _selected != null && !_busy;
+            _uninstall.Enabled = _selected != null && !string.IsNullOrWhiteSpace(_selected.Command) && !_busy;
             _scan.Enabled = _selected != null && !_busy;
         };
         Controls.Add(_apps);
@@ -282,7 +282,8 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
                         if (key == null) continue;
                         var name = key.GetValue("DisplayName") as string;
                         var command = key.GetValue("UninstallString") as string ?? key.GetValue("QuietUninstallString") as string;
-                        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(command)) continue;
+                        if (string.IsNullOrWhiteSpace(name)) continue;
+                        command ??= "";
                         if (Convert.ToInt32(key.GetValue("SystemComponent", 0)) == 1) continue;
                         var sizeKb = Convert.ToInt64(key.GetValue("EstimatedSize", 0L));
                         var size = sizeKb > 0 ? FormatBytes(sizeKb * 1024) : "—";
@@ -335,7 +336,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         }
         _apps.EndUpdate();
         _status.Text = _apps.Items.Count + " of " + _allApps.Count + " applications shown.";
-        _uninstall.Enabled = _selected != null && !_busy;
+        _uninstall.Enabled = _selected != null && !string.IsNullOrWhiteSpace(_selected.Command) && !_busy;
         _scan.Enabled = _selected != null && !_busy;
     }
 
@@ -343,80 +344,178 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
     {
         var app = _selected;
         if (app == null) { MessageBox.Show(this, "Select an application first."); return; }
+        if (string.IsNullOrWhiteSpace(app.Command))
+        {
+            MessageBox.Show(this, "This application has no registered uninstall command. Use the forced leftover scan to inspect its files and registry entries.", "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         var answer = MessageBox.Show(this,
-            "This opens the application's registered uninstaller. Follow its prompts and return here when it finishes.\n\n" +
-            app.Name + "\n" + app.Publisher + "\n\nThe utility will not force-close or silently remove the application.",
+            "EXE COMPUTERS will launch the application's uninstall command. Save your work in the application first.\n\n" +
+            app.Name + "\n" + app.Publisher + "\n\nThe application will only be marked as uninstalled after its uninstall registration disappears.",
             "Confirm application uninstall", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (answer != DialogResult.Yes) return;
+
         try
         {
-            var command = Environment.ExpandEnvironmentVariables(app.Command.Trim());
-            if (string.IsNullOrWhiteSpace(command))
-                throw new InvalidOperationException("This application has no registered uninstall command.");
+            var psi = BuildUninstallStartInfo(app);
+            if (app.Hive == RegistryHive.LocalMachine && !IsAdministrator())
+                psi.Verb = "runas";
 
-            // Parse the executable separately from its arguments. Unquoted uninstall paths
-            // often contain spaces, so splitting at the first space can launch the wrong file.
-            string exe;
-            string args;
-            if (command.StartsWith("\""))
-            {
-                var endQuote = command.IndexOf('"', 1);
-                if (endQuote < 0) throw new InvalidOperationException("The uninstall command contains invalid quotation marks.");
-                exe = command[1..endQuote];
-                args = command[(endQuote + 1)..].Trim();
-            }
-            else
-            {
-                var exeEnd = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-                if (exeEnd >= 0)
-                {
-                    exeEnd += 4;
-                    exe = command[..exeEnd].Trim();
-                    args = command[exeEnd..].Trim();
-                }
-                else
-                {
-                    var split = command.IndexOf(' ');
-                    exe = split < 0 ? command : command[..split];
-                    args = split < 0 ? "" : command[(split + 1)..].Trim();
-                }
-            }
-
-            // MSI /I opens install/maintenance mode. An explicit uninstall must use /X.
-            if (string.Equals(Path.GetFileNameWithoutExtension(exe), "msiexec", StringComparison.OrdinalIgnoreCase))
-            {
-                exe = "msiexec.exe";
-                args = System.Text.RegularExpressions.Regex.Replace(
-                    args, @"(?i)(^|\s)/I(?=\s*\{)", "$1/X");
-            }
-
-            var psi = new ProcessStartInfo(exe)
-            {
-                UseShellExecute = true,
-                Arguments = args
-            };
+            _uninstall.Enabled = false;
+            _refresh.Enabled = false;
+            _scan.Enabled = false;
+            _status.Text = "Starting the registered uninstaller for " + app.Name + "...";
+            WriteLog("Starting uninstall command: " + psi.FileName + " " + psi.Arguments);
 
             using var uninstallProcess = Process.Start(psi);
-            if (uninstallProcess == null) throw new InvalidOperationException("Windows could not start the registered uninstaller.");
-            _uninstall.Enabled = false;
-            _status.Text = "Uninstaller is running. This will update when it closes...";
-            WriteLog("Launched the registered uninstall command for " + app.Name);
+            if (uninstallProcess == null)
+                throw new InvalidOperationException("Windows did not return an uninstall process. Check permissions and the registered uninstall command.");
+
+            _status.Text = "Uninstaller is running. Complete its prompts; this window will verify the result...";
             await uninstallProcess.WaitForExitAsync();
+            var exitCode = uninstallProcess.ExitCode;
+            WriteLog("Uninstaller process exited for " + app.Name + " (exit code " + exitCode + "). Verifying the installed-app registration...");
+
+            // Some vendor launchers exit before their child uninstaller finishes. Give the
+            // uninstall registration time to disappear instead of treating process exit as success.
+            var removed = false;
+            for (var attempt = 0; attempt < 30; attempt++)
+            {
+                if (IsDisposed) return;
+                removed = await Task.Run(() => !IsRegistrationPresent(app));
+                if (removed) break;
+                await Task.Delay(1000);
+            }
 
             if (IsDisposed) return;
-            _status.Text = "Uninstaller process finished for " + app.Name + ".";
-            WriteLog("Uninstaller process exited for " + app.Name + " (exit code " + uninstallProcess.ExitCode + ").");
-            _uninstall.Enabled = _selected != null && !_busy;
+            if (!removed)
+            {
+                _status.Text = "Uninstall was not verified — the application is still registered.";
+                WriteLog("Uninstall not verified. The uninstall registry entry still exists; the app may have opened Modify/Repair mode or the vendor uninstaller may have failed.");
+                MessageBox.Show(this,
+                    "The uninstaller process closed, but Windows still lists " + app.Name + " as installed.\n\n" +
+                    "This is not being reported as a successful uninstall. The vendor uninstaller may have opened Modify/Repair mode, failed, or started another process.\n\n" +
+                    "Try again using the application's own uninstall option, then refresh this inventory.",
+                    "Uninstallation not verified", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                await LoadAppsAsync();
+                return;
+            }
 
+            _status.Text = "Uninstallation verified for " + app.Name + ".";
+            WriteLog("Uninstallation verified: the application's registered uninstall entry was removed.");
             if (ShowUninstallCompletedPrompt(app))
                 await ScanLeftoversAsync(app);
+            else
+                await LoadAppsAsync();
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            _status.Text = "Uninstall cancelled.";
+            WriteLog("Uninstall cancelled at the Windows permission prompt.");
         }
         catch (Exception ex)
         {
-            if (!IsDisposed) _uninstall.Enabled = _selected != null && !_busy;
-            WriteLog("Uninstall launch/wait failed: " + ex.Message);
-            MessageBox.Show(this, ex.Message, "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!IsDisposed)
+            {
+                _status.Text = "Uninstall could not be started or verified.";
+                WriteLog("Uninstall failed: " + ex.Message);
+                MessageBox.Show(this, ex.Message, "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                _refresh.Enabled = !_busy;
+                _uninstall.Enabled = _selected != null && !string.IsNullOrWhiteSpace(_selected.Command) && !_busy;
+                _scan.Enabled = _selected != null && !_busy;
+            }
+        }
+    }
+
+    private static ProcessStartInfo BuildUninstallStartInfo(AppEntry app)
+    {
+        var command = Environment.ExpandEnvironmentVariables(app.Command.Trim());
+        if (string.IsNullOrWhiteSpace(command))
+            throw new InvalidOperationException("This application has no registered uninstall command.");
+
+        string exe;
+        string args;
+        if (command.StartsWith("\""))
+        {
+            var endQuote = command.IndexOf('"', 1);
+            if (endQuote < 0)
+                throw new InvalidOperationException("The registered uninstall command has invalid quotation marks.");
+            exe = command[1..endQuote];
+            args = command[(endQuote + 1)..].Trim();
+        }
+        else
+        {
+            // Unquoted paths can contain spaces. The first .exe boundary is a safer
+            // executable delimiter than splitting at the first whitespace.
+            var exeEnd = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            if (exeEnd >= 0)
+            {
+                exeEnd += 4;
+                exe = command[..exeEnd].Trim();
+                args = command[exeEnd..].Trim();
+            }
+            else
+            {
+                var split = command.IndexOf(' ');
+                exe = split < 0 ? command : command[..split];
+                args = split < 0 ? "" : command[(split + 1)..].Trim();
+            }
+        }
+
+        var isMsi = string.Equals(Path.GetFileNameWithoutExtension(exe), "msiexec", StringComparison.OrdinalIgnoreCase);
+        if (isMsi)
+        {
+            // Use the product code from the registry subkey whenever possible. This
+            // avoids accidentally opening Windows Installer's Modify/Repair workflow.
+            var productCode = Guid.TryParse(app.RegistryKeyName, out var registryGuid)
+                ? registryGuid.ToString("B")
+                : System.Text.RegularExpressions.Regex.Match(args, @"\{[0-9A-Fa-f-]{36}\}").Value;
+            if (string.IsNullOrWhiteSpace(productCode))
+                throw new InvalidOperationException("This Windows Installer entry has no readable product code. The uninstall command was not run.");
+            exe = "msiexec.exe";
+            args = "/x " + productCode;
+        }
+
+        if (!File.Exists(exe) && !string.Equals(Path.GetFileName(exe), "msiexec.exe", StringComparison.OrdinalIgnoreCase))
+            throw new FileNotFoundException("The registered uninstaller executable could not be found.", exe);
+
+        return new ProcessStartInfo
+        {
+            FileName = exe,
+            Arguments = args,
+            UseShellExecute = true,
+            WorkingDirectory = File.Exists(exe) ? Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory : Environment.CurrentDirectory
+        };
+    }
+
+    private static bool IsRegistrationPresent(AppEntry app)
+    {
+        try
+        {
+            using var baseKey = RegistryKey.OpenBaseKey(app.Hive, app.View);
+            using var uninstall = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+            using var entry = uninstall?.OpenSubKey(app.RegistryKeyName);
+            return entry != null;
+        }
+        catch { return true; }
+    }
+
+    private static bool IsAdministrator()
+    {
+        try
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(identity)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
     }
 
     private bool ShowUninstallCompletedPrompt(AppEntry app)
@@ -655,7 +754,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
     {
         _busy = busy;
         _refresh.Enabled = !busy;
-        _uninstall.Enabled = !busy && _selected != null;
+        _uninstall.Enabled = !busy && _selected != null && !string.IsNullOrWhiteSpace(_selected.Command);
         _scan.Enabled = !busy && _selected != null;
         _remove.Enabled = !busy && _leftovers.Items.Count > 0;
         _search.Enabled = !busy;
