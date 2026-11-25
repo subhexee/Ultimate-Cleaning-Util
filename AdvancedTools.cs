@@ -362,7 +362,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         {
             try
             {
-                foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
+                foreach (var dir in Directory.EnumerateDirectories(root, "*", System.IO.SearchOption.TopDirectoryOnly))
                 {
                     var name = Path.GetFileName(dir);
                     if (MatchesProductName(name, app.Name, tokens))
