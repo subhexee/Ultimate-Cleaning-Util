@@ -338,6 +338,8 @@ public sealed class MainForm : Form
             {
                 _consoleFullScreen = true;
                 _consoleMinimized = false;
+                _console.Padding = new Padding(14, 10, 14, 10);
+                bottom.Visible = true;
                 _log.Visible = true;
                 _main.Visible = false;
                 _sidebar.Visible = false;
@@ -348,6 +350,9 @@ public sealed class MainForm : Form
             else
             {
                 _consoleFullScreen = false;
+                _consoleMinimized = false;
+                _console.Padding = new Padding(14, 10, 14, 10);
+                bottom.Visible = true;
                 _shell.SetRowSpan(_console, 1);
                 _shell.SetRow(_console, 1);
                 _shell.RowStyles[1].Height = _consoleExpanded ? 390 : 220;
