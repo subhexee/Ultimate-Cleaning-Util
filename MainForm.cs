@@ -23,6 +23,7 @@ public sealed class MainForm : Form
     private bool _dark = true;
     private CancellationTokenSource? _runCts;
     private CancellationTokenSource? _operationCts;
+    private readonly TableLayoutPanel _shell = new();
     private Panel _sidebar = new();
     private Panel _main = new();
     private Panel _console = new();
@@ -61,10 +62,8 @@ public sealed class MainForm : Form
 
     private void BuildShell()
     {
-        _sidebar.Dock = DockStyle.Left;
-        _sidebar.Width = 218;
+        _sidebar.Dock = DockStyle.Fill;
         _sidebar.Padding = new Padding(16);
-        Controls.Add(_sidebar);
 
         var brand = new Panel { Dock = DockStyle.Top, Height = 82 };
         var logo = new PictureBox
@@ -109,7 +108,6 @@ public sealed class MainForm : Form
 
         _main.Dock = DockStyle.Fill;
         _main.Padding = new Padding(26, 22, 26, 14);
-        Controls.Add(_main);
 
         var top = new Panel { Dock = DockStyle.Top, Height = 82 };
         _pageTitle = new Label { Text = "Overview", AutoSize = true, Font = new Font("Segoe UI", 22, FontStyle.Bold), Location = new Point(0, 0) };
@@ -281,10 +279,8 @@ public sealed class MainForm : Form
         actionBar.Controls.Add(actionButtons);
         _main.Controls.Add(actionBar);
 
-        _console.Dock = DockStyle.Bottom;
-        _console.Height = 220;
+        _console.Dock = DockStyle.Fill;
         _console.Padding = new Padding(14, 10, 14, 10);
-        Controls.Add(_console);
 
         var consoleHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
         consoleHeader.Controls.Add(new Label { Text = "EXECUTION CONSOLE", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), Location = new Point(0, 7) });
@@ -303,26 +299,20 @@ public sealed class MainForm : Form
         {
             _consoleFullScreen = false;
             _consoleMinimized = true;
-            _console.Dock = DockStyle.Bottom;
-            // Keep the console title bar visible so its controls remain accessible.
-            _console.Height = 54;
+            // The shell reserves a dedicated console row; resizing it never overlays the workspace.
+            _shell.RowStyles[1].Height = 54;
             _log.Visible = false;
             _main.Visible = true;
             _sidebar.Visible = true;
-            _console.BringToFront();
-            consoleHeader.BringToFront();
         });
         var maximizeConsole = ConsoleControl("Maximize", 82, () =>
         {
             _consoleFullScreen = false;
             _consoleMinimized = false;
-            _console.Dock = DockStyle.Bottom;
-            _console.Height = Math.Min(430, Math.Max(260, ClientSize.Height / 2));
+            _shell.RowStyles[1].Height = Math.Min(430, Math.Max(260, ClientSize.Height / 2));
             _log.Visible = true;
             _main.Visible = true;
             _sidebar.Visible = true;
-            _console.BringToFront();
-            consoleHeader.BringToFront();
         });
         var fullscreenConsole = ConsoleControl("Fullscreen", 88, () =>
         {
@@ -330,22 +320,23 @@ public sealed class MainForm : Form
             {
                 _consoleFullScreen = true;
                 _consoleMinimized = false;
-                _console.Dock = DockStyle.Fill;
-                _console.BringToFront();
+                _log.Visible = true;
+                _main.Visible = false;
+                _sidebar.Visible = false;
+                _shell.RowStyles[1].Height = 0;
+                _shell.SetRow(_console, 0);
+                _shell.SetRowSpan(_console, 2);
             }
             else
             {
                 _consoleFullScreen = false;
-                _console.Dock = DockStyle.Bottom;
-                _console.Height = _consoleExpanded ? 390 : 220;
+                _shell.SetRowSpan(_console, 1);
+                _shell.SetRow(_console, 1);
+                _shell.RowStyles[1].Height = _consoleExpanded ? 390 : 220;
                 _log.Visible = true;
                 _main.Visible = true;
                 _sidebar.Visible = true;
-                _console.BringToFront();
-                consoleHeader.BringToFront();
-                _main.BringToFront();
-                _sidebar.BringToFront();
-            }
+                    }
         });
         consoleHeader.Resize += (_, _) =>
         {
@@ -394,10 +385,22 @@ public sealed class MainForm : Form
         _console.Controls.SetChildIndex(bottom, 1);
         _console.Controls.SetChildIndex(consoleHeader, 2);
 
-        // Reserve sidebar and console first; the main workspace fills what remains.
-        Controls.SetChildIndex(_main, 0);
-        Controls.SetChildIndex(_console, 1);
-        Controls.SetChildIndex(_sidebar, 2);
+        // Reserve independent areas for navigation, workspace and console.
+        // Console resizing cannot change the workspace z-order or cover its controls.
+        _shell.Dock = DockStyle.Fill;
+        _shell.Margin = Padding.Empty;
+        _shell.Padding = Padding.Empty;
+        _shell.ColumnCount = 2;
+        _shell.RowCount = 2;
+        _shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 218));
+        _shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
+        _shell.Controls.Add(_sidebar, 0, 0);
+        _shell.Controls.Add(_main, 1, 0);
+        _shell.Controls.Add(_console, 0, 1);
+        _shell.SetColumnSpan(_console, 2);
+        Controls.Add(_shell);
 
         // Keep the three top sections above the operation grid's fill area.
         _main.Controls.SetChildIndex(_operations, 0);
