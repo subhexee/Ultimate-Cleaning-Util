@@ -281,7 +281,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
                         using var key = root.OpenSubKey(keyName);
                         if (key == null) continue;
                         var name = key.GetValue("DisplayName") as string;
-                        var command = key.GetValue("QuietUninstallString") as string ?? key.GetValue("UninstallString") as string;
+                        var command = key.GetValue("UninstallString") as string ?? key.GetValue("QuietUninstallString") as string;
                         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(command)) continue;
                         if (Convert.ToInt32(key.GetValue("SystemComponent", 0)) == 1) continue;
                         var sizeKb = Convert.ToInt64(key.GetValue("EstimatedSize", 0L));
@@ -351,28 +351,50 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         try
         {
             var command = Environment.ExpandEnvironmentVariables(app.Command.Trim());
-            ProcessStartInfo psi;
-            if (command.StartsWith("msiexec", StringComparison.OrdinalIgnoreCase))
-            {
-                var args = command.Length > 7 ? command[7..].Trim() : "";
-                args = System.Text.RegularExpressions.Regex.Replace(args, @"(?i)(^|\s)/I(?=\s*\{)", "$1/X");
-                psi = new ProcessStartInfo("msiexec.exe") { UseShellExecute = true, Arguments = args };
-            }
-            else if (command.StartsWith("\""))
+            if (string.IsNullOrWhiteSpace(command))
+                throw new InvalidOperationException("This application has no registered uninstall command.");
+
+            // Parse the executable separately from its arguments. Unquoted uninstall paths
+            // often contain spaces, so splitting at the first space can launch the wrong file.
+            string exe;
+            string args;
+            if (command.StartsWith("\""))
             {
                 var endQuote = command.IndexOf('"', 1);
                 if (endQuote < 0) throw new InvalidOperationException("The uninstall command contains invalid quotation marks.");
-                var exe = command[1..endQuote];
-                var args = command[(endQuote + 1)..].Trim();
-                psi = new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args };
+                exe = command[1..endQuote];
+                args = command[(endQuote + 1)..].Trim();
             }
             else
             {
-                var split = command.IndexOf(' ');
-                var exe = split < 0 ? command : command[..split];
-                var args = split < 0 ? "" : command[(split + 1)..];
-                psi = new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args };
+                var exeEnd = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+                if (exeEnd >= 0)
+                {
+                    exeEnd += 4;
+                    exe = command[..exeEnd].Trim();
+                    args = command[exeEnd..].Trim();
+                }
+                else
+                {
+                    var split = command.IndexOf(' ');
+                    exe = split < 0 ? command : command[..split];
+                    args = split < 0 ? "" : command[(split + 1)..].Trim();
+                }
             }
+
+            // MSI /I opens install/maintenance mode. An explicit uninstall must use /X.
+            if (string.Equals(Path.GetFileNameWithoutExtension(exe), "msiexec", StringComparison.OrdinalIgnoreCase))
+            {
+                exe = "msiexec.exe";
+                args = System.Text.RegularExpressions.Regex.Replace(
+                    args, @"(?i)(^|\\s)/I(?=\\s*\\{)", "$1/X");
+            }
+
+            var psi = new ProcessStartInfo(exe)
+            {
+                UseShellExecute = true,
+                Arguments = args
+            };
 
             using var uninstallProcess = Process.Start(psi);
             if (uninstallProcess == null) throw new InvalidOperationException("Windows could not start the registered uninstaller.");
