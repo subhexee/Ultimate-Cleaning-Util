@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\EXEComputers.ico</ApplicationIcon>
     <AssemblyName>UltimateCleaningUtility</AssemblyName>
     <RootNamespace>UltimateCleaningUtility</RootNamespace>
     <Version>3.4.0</Version>
