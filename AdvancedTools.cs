@@ -678,7 +678,18 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         "AppData", "Application Data", "Local Settings", "ProgramData", "Windows", "Program Files",
         "Program Files (x86)", "Packages", "Microsoft", "Google", "Mozilla", "BraveSoftware",
         "Opera Software", "Temp", "Cache", "Caches", "Code Cache", "GPUCache", "Service Worker",
-        "CrashDumps", "INetCache", "Cookies", "History", "Profiles"
+        "CrashDumps", "INetCache", "Cookies", "History", "Profiles", "Steam", "Epic Games",
+        "Riot Games", "Battle.net", "XboxGames", "GOG Galaxy", "Ubisoft Game Launcher",
+        "EA Games", "Electronic Arts", "Rockstar Games", "NVIDIA", "AMD", "Intel"
+    };
+
+    // Restrict cleanup candidates to personal content, never executable or application payloads.
+    private static readonly HashSet<string> ExcludedFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".msi", ".msp", ".msix", ".appx", ".appxbundle", ".dll", ".sys", ".drv",
+        ".ocx", ".com", ".scr", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".js", ".wsf",
+        ".reg", ".lnk", ".url", ".crx", ".xpi", ".sqlite", ".sqlite3", ".db", ".dat",
+        ".tmp", ".cache", ".log", ".etl", ".cab", ".iso", ".img", ".vhd", ".vhdx"
     };
 
     private static IEnumerable<string> Enumerate(string root, bool recursive)
@@ -695,6 +706,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
                 {
                     var attrs = File.GetAttributes(file);
                     if ((attrs & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0) continue;
+                    if (ExcludedFileExtensions.Contains(Path.GetExtension(file))) continue;
                 }
                 catch { continue; }
                 yield return file;
@@ -731,6 +743,9 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
 
     private void RenderResults()
     {
+        _results.Columns[0].Text = _sortColumn == 0 ? "File path " + (_sortDescending ? "▼" : "▲") : "File path";
+        _results.Columns[1].Text = _sortColumn == 1 ? "Size " + (_sortDescending ? "▼" : "▲") : "Size";
+        _results.Columns[2].Text = _sortColumn == 2 ? "Group " + (_sortDescending ? "▼" : "▲") : "Group";
         var filtered = _allResults.AsEnumerable();
         if (_typeFilter.SelectedIndex > 0)
         {

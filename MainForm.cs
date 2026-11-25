@@ -286,21 +286,63 @@ public sealed class MainForm : Form
         _console.Padding = new Padding(14, 10, 14, 10);
         Controls.Add(_console);
 
-        var consoleHeader = new Panel { Dock = DockStyle.Top, Height = 30 };
-        consoleHeader.Controls.Add(new Label { Text = "EXECUTION CONSOLE", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), Location = new Point(0, 5) });
+        var consoleHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
+        consoleHeader.Controls.Add(new Label { Text = "EXECUTION CONSOLE", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), Location = new Point(0, 7) });
         _status.Text = "Ready";
         _status.AutoSize = true;
-        _status.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _status.Location = new Point(900, 5);
+        _status.Location = new Point(175, 7);
         consoleHeader.Controls.Add(_status);
-        var enlargeConsole = new Button { Text = "Expand console", Width = 112, Height = 25, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(740, 0), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8) };
-        enlargeConsole.Click += (_, _) =>
+        Button ConsoleControl(string text, int width, Action action)
         {
-            _consoleExpanded = !_consoleExpanded;
-            _console.Height = _consoleExpanded ? 390 : 220;
-            enlargeConsole.Text = _consoleExpanded ? "Collapse console" : "Expand console";
+            var button = new Button { Text = text, Width = width, Height = 25, Top = 2, Anchor = AnchorStyles.Top | AnchorStyles.Right, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8) };
+            button.Click += (_, _) => action();
+            consoleHeader.Controls.Add(button);
+            return button;
+        }
+        var minimizeConsole = ConsoleControl("Minimize", 78, () =>
+        {
+            _consoleFullScreen = false;
+            _consoleMinimized = true;
+            _console.Dock = DockStyle.Bottom;
+            _console.Height = 42;
+            _main.Visible = true;
+            _sidebar.Visible = true;
+        });
+        var maximizeConsole = ConsoleControl("Maximize", 82, () =>
+        {
+            _consoleFullScreen = false;
+            _consoleMinimized = false;
+            _console.Dock = DockStyle.Bottom;
+            _console.Height = Math.Min(430, Math.Max(260, ClientSize.Height / 2));
+            _main.Visible = true;
+            _sidebar.Visible = true;
+        });
+        var fullscreenConsole = ConsoleControl("Fullscreen", 88, () =>
+        {
+            if (!_consoleFullScreen)
+            {
+                _consoleFullScreen = true;
+                _consoleMinimized = false;
+                _console.Dock = DockStyle.Fill;
+                _console.BringToFront();
+            }
+            else
+            {
+                _consoleFullScreen = false;
+                _console.Dock = DockStyle.Bottom;
+                _console.Height = _consoleExpanded ? 390 : 220;
+                _main.Visible = true;
+                _sidebar.Visible = true;
+                _main.BringToFront();
+                _sidebar.BringToFront();
+            }
+        });
+        consoleHeader.Resize += (_, _) =>
+        {
+            fullscreenConsole.Left = consoleHeader.ClientSize.Width - fullscreenConsole.Width;
+            maximizeConsole.Left = fullscreenConsole.Left - maximizeConsole.Width - 5;
+            minimizeConsole.Left = maximizeConsole.Left - minimizeConsole.Width - 5;
         };
-        consoleHeader.Controls.Add(enlargeConsole);
         _console.Controls.Add(consoleHeader);
 
         _log.Dock = DockStyle.Fill;
@@ -500,6 +542,8 @@ public sealed class MainForm : Form
     }
 
     private bool _consoleExpanded;
+    private bool _consoleFullScreen;
+    private bool _consoleMinimized;
 
     private static void OpenExternal(string url)
     {
