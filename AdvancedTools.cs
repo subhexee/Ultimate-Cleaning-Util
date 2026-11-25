@@ -8,10 +8,10 @@ namespace UltimateCleaningUtility;
 
 internal static class AdvancedToolForms
 {
-    public static void ShowUninstaller(IWin32Window owner) => new AppUninstallerForm().Show(owner);
-    public static void ShowDuplicateFinder(IWin32Window owner) => new DuplicateFinderForm().Show(owner);
-    public static void ShowGaming(IWin32Window owner) => new GamingOptimizationForm().Show(owner);
-    public static void ShowDebloat(IWin32Window owner) => new DebloatForm().Show(owner);
+    public static void ShowUninstaller(IWin32Window owner) { using var form = new AppUninstallerForm(); form.ShowDialog(owner); }
+    public static void ShowDuplicateFinder(IWin32Window owner) { using var form = new DuplicateFinderForm(); form.ShowDialog(owner); }
+    public static void ShowGaming(IWin32Window owner) { using var form = new GamingOptimizationForm(); form.ShowDialog(owner); }
+    public static void ShowDebloat(IWin32Window owner) { using var form = new DebloatForm(); form.ShowDialog(owner); }
 }
 
 internal abstract class AdvancedToolForm : Form
@@ -525,21 +525,41 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
 
 internal sealed class DuplicateFinderForm : AdvancedToolForm
 {
-    private readonly TextBox _folder = new() { Location = new Point(20, 100), Width = 690, Height = 28, Text = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
+    private readonly string _userRoot = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    private readonly TextBox _folder = new() { Location = new Point(20, 100), Width = 620, Height = 28, Text = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
     private readonly CheckBox _recursive = new() { Text = "Include subfolders", Checked = true, AutoSize = true, Location = new Point(20, 140) };
+    private readonly ComboBox _typeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(175, 136), Width = 150 };
+    private readonly Button _clearFilters = new() { Text = "Clear filters", Location = new Point(335, 135), Size = new Size(110, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(29, 40, 56), ForeColor = Color.White };
     private readonly ListView _results = new();
     private readonly Label _summary = new() { Location = new Point(22, 174), AutoSize = true, ForeColor = Color.FromArgb(151, 166, 185) };
     private readonly Button _scan = new() { Text = "Scan", Location = new Point(930, 98), Size = new Size(90, 32), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(29, 40, 56), ForeColor = Color.White };
     private readonly Button _selectCandidates;
     private readonly Button _recycleCandidates;
-    public DuplicateFinderForm() : base("Duplicate File Finder", "SHA-256 content matching. Scanning is read-only; selected duplicates are sent to the Recycle Bin.")
+    private readonly List<DuplicateRecord> _allResults = new();
+    private int _sortColumn = 1;
+    private bool _sortDescending = true;
+
+    public DuplicateFinderForm() : base("Duplicate File Finder", "Scans user-owned files only. Windows, application, browser-profile and hidden/system folders are excluded.")
     {
         Controls.Add(_folder); Controls.Add(_recursive); Controls.Add(_summary);
         AddButton("Browse", 830, 98, 90, Browse);
         _scan.Click += async (_, _) => await ScanAsync(); Controls.Add(_scan);
+        _typeFilter.Items.AddRange(new object[] { "All file types", "Documents", "Images", "Videos", "Audio", "Archives", "Other" });
+        _typeFilter.SelectedIndex = 0;
+        _typeFilter.SelectedIndexChanged += (_, _) => RenderResults();
+        Controls.Add(_typeFilter);
+        _clearFilters.Click += (_, _) => ClearFilters();
+        Controls.Add(_clearFilters);
+
         _results.Location = new Point(20, 205); _results.Size = new Size(920, 275); _results.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         StyleList(_results); _results.CheckBoxes = true;
-        _results.Columns.Add("Duplicate candidate (one original per group is retained)", 700); _results.Columns.Add("Size", 110); _results.Columns.Add("Group", 80);
+        _results.Columns.Add("File path", 650); _results.Columns.Add("Size", 110); _results.Columns.Add("Group", 80);
+        _results.ColumnClick += (_, e) =>
+        {
+            if (_sortColumn == e.Column) _sortDescending = !_sortDescending;
+            else { _sortColumn = e.Column; _sortDescending = e.Column == 1; }
+            RenderResults();
+        };
         Controls.Add(_results);
         _selectCandidates = AddButton("Select duplicate candidates", 20, 485, 210, SelectDuplicates);
         _recycleCandidates = AddButton("Recycle checked files", 240, 485, 190, RecycleChecked);
@@ -547,6 +567,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         Shown += (_, _) => LayoutDuplicateFinder();
         LayoutDuplicateFinder();
     }
+
     private void LayoutDuplicateFinder()
     {
         _folder.Width = Math.Max(220, ClientSize.Width - 350);
@@ -557,40 +578,64 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         _recycleCandidates.Top = _selectCandidates.Top;
         _results.Height = Math.Max(120, _selectCandidates.Top - _results.Top - 12);
     }
+
     private void Browse()
     {
-        using var d = new FolderBrowserDialog { Description = "Choose a folder to scan" };
-        if (d.ShowDialog(this) == DialogResult.OK) _folder.Text = d.SelectedPath;
+        using var d = new FolderBrowserDialog { Description = "Choose a folder inside your Windows user profile. Application and hidden/system folders are excluded.", SelectedPath = _userRoot };
+        if (d.ShowDialog(this) == DialogResult.OK)
+        {
+            if (!IsWithinUserProfile(d.SelectedPath))
+            {
+                MessageBox.Show(this, "For safety, Duplicate Finder scans only folders inside your Windows user profile.", "Folder not allowed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            _folder.Text = d.SelectedPath;
+        }
     }
+
+    private bool IsWithinUserProfile(string path)
+    {
+        var root = Path.GetFullPath(_userRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var candidate = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(_userRoot).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task ScanAsync()
     {
         if (!Directory.Exists(_folder.Text)) { MessageBox.Show(this, "Choose an existing folder."); return; }
-        _scan.Enabled = false; _results.Items.Clear(); _summary.Text = "Scanning files and calculating hashes...";
+        if (!IsWithinUserProfile(_folder.Text))
+        {
+            MessageBox.Show(this, "For safety, scans are limited to your Windows user profile. Windows and Program Files locations are not scanned.", "Protected location", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        _scan.Enabled = false; _results.Items.Clear(); _allResults.Clear(); _summary.Text = "Scanning user files and calculating hashes...";
         try
         {
             var groups = await Task.Run(() => ScanDuplicates(_folder.Text, _recursive.Checked));
-            long bytes = 0; int count = 0; int groupNo = 0;
+            int groupNo = 0;
             foreach (var group in groups)
             {
                 groupNo++;
                 var sorted = group.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray();
+                // Keep the first file in each group and list only additional copies as candidates.
                 for (int i = 1; i < sorted.Length; i++)
                 {
                     try
                     {
                         var info = new FileInfo(sorted[i]);
-                        var row = new ListViewItem(sorted[i]); row.SubItems.Add(FormatSize(info.Length)); row.SubItems.Add(groupNo.ToString()); row.Tag = sorted[i];
-                        _results.Items.Add(row); count++; bytes += info.Length;
+                        _allResults.Add(new DuplicateRecord(sorted[i], info.Length, groupNo));
                     }
                     catch { }
                 }
             }
-            _summary.Text = count + " duplicate candidate(s) found; approximately " + FormatSize(bytes) + " potentially reclaimable. First file in each group is kept.";
-            WriteLog("Scan finished. " + count + " duplicate candidate(s) across " + groups.Count + " groups.");
+            RenderResults();
+            WriteLog("Scan finished. " + _allResults.Count + " user-file duplicate candidate(s) across " + groups.Count + " groups. Protected folders were skipped.");
         }
         catch (Exception ex) { WriteLog("Scan failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Duplicate finder", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { _scan.Enabled = true; }
     }
+
     private static List<List<string>> ScanDuplicates(string root, bool recursive)
     {
         var sizes = new Dictionary<long, List<string>>();
@@ -624,21 +669,105 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         }
         return results;
     }
+
+    private static readonly HashSet<string> ProtectedDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AppData", "Application Data", "Local Settings", "ProgramData", "Windows", "Program Files",
+        "Program Files (x86)", "Packages", "Microsoft", "Google", "Mozilla", "BraveSoftware",
+        "Opera Software", "Temp", "Cache", "Caches", "Code Cache", "GPUCache", "Service Worker",
+        "CrashDumps", "INetCache", "Cookies", "History", "Profiles"
+    };
+
     private static IEnumerable<string> Enumerate(string root, bool recursive)
     {
         var stack = new Stack<string>(); stack.Push(root);
         while (stack.Count > 0)
         {
             var dir = stack.Pop();
-            string[] files; try { files = Directory.GetFiles(dir); } catch { continue; }
-            foreach (var file in files) yield return file;
+            string[] files;
+            try { files = Directory.GetFiles(dir); } catch { continue; }
+            foreach (var file in files)
+            {
+                try
+                {
+                    var attrs = File.GetAttributes(file);
+                    if ((attrs & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0) continue;
+                    yield return file;
+                }
+                catch { }
+            }
             if (!recursive) continue;
-            string[] dirs; try { dirs = Directory.GetDirectories(dir); } catch { continue; }
+            string[] dirs;
+            try { dirs = Directory.GetDirectories(dir); } catch { continue; }
             foreach (var child in dirs)
-                try { if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) == 0) stack.Push(child); } catch { }
+            {
+                try
+                {
+                    var attrs = File.GetAttributes(child);
+                    var name = Path.GetFileName(child);
+                    if ((attrs & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0) continue;
+                    if (ProtectedDirectoryNames.Contains(name) || name.StartsWith(".", StringComparison.Ordinal)) continue;
+                    stack.Push(child);
+                }
+                catch { }
+            }
         }
     }
-    private void SelectDuplicates() { foreach (ListViewItem row in _results.Items) row.Checked = true; }
+
+    private static string Category(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        if (new[] { ".doc", ".docx", ".pdf", ".txt", ".rtf", ".odt", ".xls", ".xlsx", ".ppt", ".pptx", ".csv" }.Contains(ext)) return "Documents";
+        if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".svg" }.Contains(ext)) return "Images";
+        if (new[] { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".mpeg", ".mpg" }.Contains(ext)) return "Videos";
+        if (new[] { ".mp3", ".wav", ".flac", ".aac", ".m4a", ".ogg", ".wma" }.Contains(ext)) return "Audio";
+        if (new[] { ".zip", ".7z", ".rar", ".tar", ".gz", ".bz2" }.Contains(ext)) return "Archives";
+        return "Other";
+    }
+
+    private void RenderResults()
+    {
+        var filtered = _allResults.AsEnumerable();
+        if (_typeFilter.SelectedIndex > 0)
+        {
+            var wanted = _typeFilter.SelectedItem?.ToString();
+            filtered = filtered.Where(x => Category(x.Path) == wanted);
+        }
+        IOrderedEnumerable<DuplicateRecord> ordered = _sortColumn switch
+        {
+            0 => _sortDescending ? filtered.OrderByDescending(x => x.Path, StringComparer.OrdinalIgnoreCase) : filtered.OrderBy(x => x.Path, StringComparer.OrdinalIgnoreCase),
+            1 => _sortDescending ? filtered.OrderByDescending(x => x.Size) : filtered.OrderBy(x => x.Size),
+            _ => _sortDescending ? filtered.OrderByDescending(x => x.Group) : filtered.OrderBy(x => x.Group)
+        };
+        _results.BeginUpdate();
+        _results.Items.Clear();
+        long bytes = 0;
+        foreach (var item in ordered)
+        {
+            var row = new ListViewItem(item.Path);
+            row.SubItems.Add(FormatSize(item.Size));
+            row.SubItems.Add(item.Group.ToString());
+            row.Tag = item.Path;
+            _results.Items.Add(row);
+            bytes += item.Size;
+        }
+        _results.EndUpdate();
+        _summary.Text = _results.Items.Count + " duplicate candidate(s) shown; " + FormatSize(bytes) + " potentially reclaimable. Click column headings to sort.";
+    }
+
+    private void ClearFilters()
+    {
+        _typeFilter.SelectedIndex = 0;
+        _sortColumn = 1;
+        _sortDescending = true;
+        RenderResults();
+    }
+
+    private void SelectDuplicates()
+    {
+        foreach (ListViewItem row in _results.Items) row.Checked = true;
+    }
+
     private void RecycleChecked()
     {
         var rows = _results.CheckedItems.Cast<ListViewItem>().ToList();
@@ -652,7 +781,9 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         }
         WriteLog("Checked duplicate files processed.");
     }
+
     private static string FormatSize(long b) => b >= 1073741824 ? (b / 1073741824d).ToString("0.00") + " GB" : b >= 1048576 ? (b / 1048576d).ToString("0.0") + " MB" : (b / 1024d).ToString("0") + " KB";
+    private sealed record DuplicateRecord(string Path, long Size, int Group);
 }
 
 internal sealed class GamingOptimizationForm : AdvancedToolForm
