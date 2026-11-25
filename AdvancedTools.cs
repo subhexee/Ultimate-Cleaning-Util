@@ -561,6 +561,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
     private readonly ListView _results = new();
     private readonly Label _summary = new() { Location = new Point(22, 174), AutoSize = true, ForeColor = Color.FromArgb(151, 166, 185) };
     private readonly Button _scan = new() { Text = "Scan", Location = new Point(930, 98), Size = new Size(90, 32), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(29, 40, 56), ForeColor = Color.White };
+    private readonly Button _browse;
     private readonly Button _selectCandidates;
     private readonly Button _recycleCandidates;
     private readonly List<DuplicateRecord> _allResults = new();
@@ -570,7 +571,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
     public DuplicateFinderForm() : base("Duplicate File Finder", "Scans user-owned files only. Windows, application, browser-profile and hidden/system folders are excluded.")
     {
         Controls.Add(_folder); Controls.Add(_recursive); Controls.Add(_summary);
-        AddButton("Browse", 830, 98, 90, Browse);
+        _browse = AddButton("Browse", 830, 98, 90, Browse);
         _scan.Click += async (_, _) => await ScanAsync(); Controls.Add(_scan);
         _typeFilter.Items.AddRange(new object[] { "All file types", "Documents", "Images", "Videos", "Audio", "Archives", "Other" });
         _typeFilter.SelectedIndex = 0;
@@ -598,9 +599,10 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
 
     private void LayoutDuplicateFinder()
     {
-        _folder.Width = Math.Max(220, ClientSize.Width - 350);
         _folder.Top = 100;
         _scan.Left = ClientSize.Width - _scan.Width - 20;
+        _browse.Left = _scan.Left - _browse.Width - 10;
+        _folder.Width = Math.Max(220, _browse.Left - _folder.Left - 10);
         _results.Width = ClientSize.Width - 40;
         _selectCandidates.Top = LogBox.Top - _selectCandidates.Height - 10;
         _recycleCandidates.Top = _selectCandidates.Top;
