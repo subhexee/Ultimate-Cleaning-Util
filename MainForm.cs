@@ -30,7 +30,8 @@ public sealed class MainForm : Form
     private Label _toolsSectionTitle = new();
     private Button? _startupFilterButton;
     private Button? _startupFeaturedButton;
-    private Button? _selectAllButton;
+    private CheckBox? _selectAllButton;
+    private bool _updatingSelectAll;
     private StartupManagerForm? _startupForm;
 
     private readonly Color DarkBg = Color.FromArgb(15, 21, 31);
@@ -200,8 +201,12 @@ public sealed class MainForm : Form
         _toolsSectionTitle = new Label { Text = "All tools", AutoSize = true, Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(0, 5) };
         contentHeader.Controls.Add(_toolsSectionTitle);
         contentHeader.Controls.Add(new Label { Text = "Click tweaks to select them, then run.", AutoSize = true, ForeColor = Color.Gray, Location = new Point(1, 31) });
-        _selectAllButton = new Button { Name = "select-all-tools", Text = "Select all", Width = 112, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(808, 10), FlatStyle = FlatStyle.Flat };
-        _selectAllButton.Click += (_, _) => ToggleVisibleSelection(_selectAllButton);
+        _selectAllButton = new CheckBox { Name = "select-all-tools", Text = "Select all", Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter, AutoSize = false, Width = 112, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(808, 10), FlatStyle = FlatStyle.Flat, Checked = false };
+        _selectAllButton.CheckedChanged += (_, _) =>
+        {
+            if (_updatingSelectAll) return;
+            SetVisibleSelection(_selectAllButton.Checked);
+        };
         contentHeader.Controls.Add(_selectAllButton);
         contentHeader.Resize += (_, _) => _selectAllButton.Left = contentHeader.ClientSize.Width - _selectAllButton.Width;
         _main.Controls.Add(contentHeader);
@@ -467,7 +472,7 @@ public sealed class MainForm : Form
                     ResetStartupLaunchButtons();
                     Log("STARTUP", "Startup manager closed.");
                 };
-                _startupForm.Show(this);
+                _startupForm.ShowDialog(this);
             }
         }
         catch (Exception ex)
@@ -558,9 +563,13 @@ public sealed class MainForm : Form
         if (visibleCards.Count == 0) return;
 
         var selectAll = visibleCards.Any(card => !card.Selected);
-        foreach (var card in visibleCards)
-            card.Selected = selectAll;
+        SetVisibleSelection(selectAll);
+    }
 
+    private void SetVisibleSelection(bool selected)
+    {
+        var visibleCards = _cards.Where(card => card.Visible && !card.Disabled && card.Action != null).ToList();
+        foreach (var card in visibleCards) card.Selected = selected;
         UpdateSelection();
     }
 
@@ -568,9 +577,12 @@ public sealed class MainForm : Form
     {
         if (_selectAllButton == null) return;
         var visibleCards = _cards.Where(card => card.Visible && !card.Disabled && card.Action != null).ToList();
-        _selectAllButton.Text = visibleCards.Count > 0 && visibleCards.All(card => card.Selected)
-            ? "Deselect all"
-            : "Select all";
+        var allSelected = visibleCards.Count > 0 && visibleCards.All(card => card.Selected);
+        _updatingSelectAll = true;
+        _selectAllButton.Checked = allSelected;
+        _selectAllButton.Text = allSelected ? "✓ Deselect all" : "☐ Select all";
+        _selectAllButton.Enabled = visibleCards.Count > 0;
+        _updatingSelectAll = false;
     }
 
     private void RefreshFilterButtonStyles()
