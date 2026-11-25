@@ -400,7 +400,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             }
             catch { }
         }
-        return found.GroupBy(x => x.Path, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+        return found.GroupBy(x => x.Path + "|" + x.View, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
             .OrderBy(x => x.Kind, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -450,12 +450,12 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
                 else if (candidate.Hive.HasValue && candidate.View.HasValue)
                 {
                     Directory.CreateDirectory(backupRoot);
-                    var backupFile = Path.Combine(backupRoot, SafeFileName(candidate.Path) + ".reg");
+                    var backupFile = Path.Combine(backupRoot, SafeFileName(candidate.Path + "_" + candidate.View) + ".reg");
                     var export = new ProcessStartInfo("reg.exe")
                     {
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                        Arguments = "export \"" + candidate.Path + "\" \"" + backupFile + "\" /y"
+                        Arguments = "export \"" + candidate.Path + "\" \"" + backupFile + "\" /y " + (candidate.View == RegistryView.Registry32 ? "/reg:32" : "/reg:64")
                     };
                     using var process = Process.Start(export);
                     process?.WaitForExit();
