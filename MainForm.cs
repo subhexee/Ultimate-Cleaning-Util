@@ -46,6 +46,7 @@ public sealed class MainForm : Form
         Icon = Branding.CreateIcon();
         MinimumSize = new Size(1050, 720);
         Size = new Size(1280, 850);
+        AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5f);
         BuildShell();
