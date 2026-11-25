@@ -307,20 +307,30 @@ public sealed class MainForm : Form
         {
             _consoleFullScreen = false;
             _consoleMinimized = true;
-            // The shell reserves a dedicated console row; resizing it never overlays the workspace.
-            _shell.RowStyles[1].Height = 54;
+
+            // Keep the header and its controls visible. The progress/footer row
+            // and outer padding must be removed or they consume the entire
+            // compact shell row and clip the console header.
+            _console.Padding = Padding.Empty;
+            bottom.Visible = false;
             _log.Visible = false;
+            _shell.RowStyles[1].Height = 40;
             _main.Visible = true;
             _sidebar.Visible = true;
+            _console.PerformLayout();
+            consoleHeader.PerformLayout();
         });
         var maximizeConsole = ConsoleControl("Maximize", 82, () =>
         {
             _consoleFullScreen = false;
             _consoleMinimized = false;
+            _console.Padding = new Padding(14, 10, 14, 10);
+            bottom.Visible = true;
             _shell.RowStyles[1].Height = Math.Min(430, Math.Max(260, ClientSize.Height / 2));
             _log.Visible = true;
             _main.Visible = true;
             _sidebar.Visible = true;
+            _console.PerformLayout();
         });
         var fullscreenConsole = ConsoleControl("Fullscreen", 88, () =>
         {
