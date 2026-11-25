@@ -387,7 +387,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             {
                 exe = "msiexec.exe";
                 args = System.Text.RegularExpressions.Regex.Replace(
-                    args, @"(?i)(^|\\s)/I(?=\\s*\\{)", "$1/X");
+                    args, @"(?i)(^|\s)/I(?=\s*\{)", "$1/X");
             }
 
             var psi = new ProcessStartInfo(exe)
