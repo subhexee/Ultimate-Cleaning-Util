@@ -22,15 +22,18 @@ internal abstract class AdvancedToolForm : Form
         Text = title + " — Ultimate Cleaning Utility";
         Icon = Branding.CreateIcon();
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(780, 560);
-        Size = new Size(980, 720);
+        MinimumSize = new Size(1050, 760);
+        Size = new Size(1120, 820);
+        AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9.5f);
         BackColor = Color.FromArgb(18, 25, 37);
         ForeColor = Color.FromArgb(235, 241, 248);
-        Controls.Add(new Label { Text = title, Font = new Font("Segoe UI", 19, FontStyle.Bold), AutoSize = true, Location = new Point(20, 16) });
-        Controls.Add(new Label { Text = subtitle, ForeColor = Color.FromArgb(151, 166, 185), AutoSize = true, Location = new Point(22, 54) });
-        LogBox.Location = new Point(20, 500);
-        LogBox.Size = new Size(920, 165);
+        var titleLabel = new Label { Text = title, Font = new Font("Segoe UI", 19, FontStyle.Bold), AutoSize = false, Location = new Point(20, 14), Size = new Size(980, 38), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, AutoEllipsis = true };
+        var subtitleLabel = new Label { Text = subtitle, ForeColor = Color.FromArgb(151, 166, 185), AutoSize = false, Location = new Point(22, 54), Size = new Size(980, 34), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, AutoEllipsis = true };
+        Controls.Add(titleLabel);
+        Controls.Add(subtitleLabel);
+        LogBox.Location = new Point(20, 0);
+        LogBox.Size = new Size(980, 120);
         LogBox.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         LogBox.ReadOnly = true;
         LogBox.BorderStyle = BorderStyle.None;
@@ -38,7 +41,19 @@ internal abstract class AdvancedToolForm : Form
         LogBox.ForeColor = Color.FromArgb(185, 205, 220);
         LogBox.Font = new Font("Cascadia Mono", 8.5f);
         Controls.Add(LogBox);
-        Resize += (_, _) => { LogBox.Width = ClientSize.Width - 40; LogBox.Top = ClientSize.Height - 185; };
+        Resize += (_, _) =>
+        {
+            titleLabel.Width = ClientSize.Width - 40;
+            subtitleLabel.Width = ClientSize.Width - 44;
+            LogBox.Width = ClientSize.Width - 40;
+            LogBox.Height = 120;
+            LogBox.Top = ClientSize.Height - LogBox.Height - 18;
+        };
+        Shown += (_, _) =>
+        {
+            LogBox.Width = ClientSize.Width - 40;
+            LogBox.Top = ClientSize.Height - LogBox.Height - 18;
+        };
     }
     protected void WriteLog(string message)
     {
@@ -50,6 +65,9 @@ internal abstract class AdvancedToolForm : Form
     {
         var b = new Button { Text = text, Location = new Point(x, y), Size = new Size(width, 34), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(29, 40, 56), ForeColor = Color.White, Cursor = Cursors.Hand };
         b.FlatAppearance.BorderColor = Color.FromArgb(65, 78, 96);
+        b.TextAlign = ContentAlignment.MiddleCenter;
+        b.AutoEllipsis = true;
+        b.Padding = new Padding(5, 0, 5, 0);
         b.Click += (_, _) => action();
         Controls.Add(b);
         return b;
@@ -511,19 +529,33 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
     private readonly CheckBox _recursive = new() { Text = "Include subfolders", Checked = true, AutoSize = true, Location = new Point(20, 140) };
     private readonly ListView _results = new();
     private readonly Label _summary = new() { Location = new Point(22, 174), AutoSize = true, ForeColor = Color.FromArgb(151, 166, 185) };
-    private readonly Button _scan = new() { Text = "Scan", Location = new Point(820, 98), Size = new Size(90, 32), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(29, 40, 56), ForeColor = Color.White };
+    private readonly Button _scan = new() { Text = "Scan", Location = new Point(930, 98), Size = new Size(90, 32), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(29, 40, 56), ForeColor = Color.White };
+    private readonly Button _selectCandidates;
+    private readonly Button _recycleCandidates;
     public DuplicateFinderForm() : base("Duplicate File Finder", "SHA-256 content matching. Scanning is read-only; selected duplicates are sent to the Recycle Bin.")
     {
         Controls.Add(_folder); Controls.Add(_recursive); Controls.Add(_summary);
-        AddButton("Browse", 720, 98, 90, Browse);
+        AddButton("Browse", 830, 98, 90, Browse);
         _scan.Click += async (_, _) => await ScanAsync(); Controls.Add(_scan);
         _results.Location = new Point(20, 205); _results.Size = new Size(920, 275); _results.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         StyleList(_results); _results.CheckBoxes = true;
         _results.Columns.Add("Duplicate candidate (one original per group is retained)", 700); _results.Columns.Add("Size", 110); _results.Columns.Add("Group", 80);
         Controls.Add(_results);
-        AddButton("Select duplicate candidates", 20, 485, 190, SelectDuplicates);
-        AddButton("Recycle checked files", 220, 485, 165, RecycleChecked);
-        Resize += (_, _) => { _folder.Width = ClientSize.Width - 270; _results.Width = ClientSize.Width - 40; _results.Height = Math.Max(100, LogBox.Top - _results.Top - 55); };
+        _selectCandidates = AddButton("Select duplicate candidates", 20, 485, 210, SelectDuplicates);
+        _recycleCandidates = AddButton("Recycle checked files", 240, 485, 190, RecycleChecked);
+        Resize += (_, _) => LayoutDuplicateFinder();
+        Shown += (_, _) => LayoutDuplicateFinder();
+        LayoutDuplicateFinder();
+    }
+    private void LayoutDuplicateFinder()
+    {
+        _folder.Width = Math.Max(220, ClientSize.Width - 350);
+        _folder.Top = 100;
+        _scan.Left = ClientSize.Width - _scan.Width - 20;
+        _results.Width = ClientSize.Width - 40;
+        _selectCandidates.Top = LogBox.Top - _selectCandidates.Height - 10;
+        _recycleCandidates.Top = _selectCandidates.Top;
+        _results.Height = Math.Max(120, _selectCandidates.Top - _results.Top - 12);
     }
     private void Browse()
     {
