@@ -1360,14 +1360,34 @@ internal sealed class DebloatForm : AdvancedToolForm
             var file = Path.Combine(_backupFolder, "debloat-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
             File.WriteAllText(file, JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }));
 
+            var applied = 0;
+            var failed = new List<string>();
             foreach (var tweak in selected)
             {
-                using var writable = Registry.CurrentUser.CreateSubKey(tweak.Path, true);
-                writable?.SetValue(tweak.ValueName, tweak.Value, RegistryValueKind.DWord);
-                WriteLog("Applied: " + tweak.Name);
+                try
+                {
+                    using var writable = Registry.CurrentUser.CreateSubKey(tweak.Path, true);
+                    if (writable == null)
+                        throw new UnauthorizedAccessException("Windows did not allow this registry key to be opened for writing.");
+                    writable.SetValue(tweak.ValueName, tweak.Value, RegistryValueKind.DWord);
+                    applied++;
+                    WriteLog("Applied: " + tweak.Name);
+                }
+                catch (Exception ex)
+                {
+                    failed.Add(tweak.Name + ": " + ex.Message);
+                    WriteLog("Skipped (permission or registry error): " + tweak.Name + " — " + ex.Message);
+                }
             }
             WriteLog("Backup saved: " + file);
-            MessageBox.Show(this, "Selected tweaks applied.\n\nBackup saved to:\n" + file + "\n\nSome settings may require Explorer restart, sign-out or reboot.", "Debloat complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            WriteLog("Debloat finished. Applied: " + applied + "/" + selected.Count + "; failed: " + failed.Count + ".");
+            var summary = "Debloat operation finished.\n\nApplied: " + applied + "\nFailed: " + failed.Count +
+                "\n\nBackup saved to:\n" + file +
+                (failed.Count > 0 ? "\n\nFailed tweaks:\n" + string.Join("\n", failed.Take(8)) +
+                    (failed.Count > 8 ? "\n…and " + (failed.Count - 8) + " more. See the live log." : "") : "") +
+                "\n\nSome settings may require restarting Explorer or signing out.";
+            MessageBox.Show(this, summary, "Debloat results", MessageBoxButtons.OK,
+                failed.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
         catch (Exception ex) { WriteLog("Apply failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Debloat", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
