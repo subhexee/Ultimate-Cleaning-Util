@@ -296,6 +296,8 @@ public sealed class MainForm : Form
         _status.AutoSize = true;
         _status.Location = new Point(175, 7);
         consoleHeader.Controls.Add(_status);
+        // Declare the footer before console button callbacks capture it.
+        Panel bottom = new() { Dock = DockStyle.Bottom, Height = 46 };
         Button ConsoleControl(string text, int width, Action action)
         {
             var button = new Button { Text = text, Width = width, Height = 25, Top = 2, Anchor = AnchorStyles.Top | AnchorStyles.Right, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8) };
@@ -377,7 +379,6 @@ public sealed class MainForm : Form
         _log.ForeColor = Color.FromArgb(185, 205, 220);
         _console.Controls.Add(_log);
 
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 46 };
         _progress.Dock = DockStyle.Left;
         _progress.Width = 260;
         _progress.Height = 24;
