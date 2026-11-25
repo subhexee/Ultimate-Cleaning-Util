@@ -20,7 +20,7 @@ public sealed class MainForm : Form
     private readonly Button _clearButton = new();
     private readonly Button _cancelButton = new();
     private readonly List<OperationCard> _cards = new();
-    private bool _dark = true;
+    private bool _dark = ThemeManager.IsDark;
     private CancellationTokenSource? _runCts;
     private CancellationTokenSource? _operationCts;
     private readonly TableLayoutPanel _shell = new();
@@ -101,7 +101,7 @@ public sealed class MainForm : Form
 
         var theme = new Button { Text = "◐   Toggle appearance", Height = 38, Dock = DockStyle.Bottom, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft };
         theme.FlatAppearance.BorderSize = 0;
-        theme.Click += (_, _) => { _dark = !_dark; ApplyTheme(); };
+        theme.Click += (_, _) => { _dark = !_dark; ThemeManager.IsDark = _dark; ApplyTheme(); };
         sideBottom.Controls.Add(theme);
         sideBottom.Controls.Add(new Label { Text = "Made by EXE COMPUTERS", AutoSize = true, ForeColor = Color.Gray, Location = new Point(3, 174) });
         _sidebar.Controls.Add(sideBottom);
