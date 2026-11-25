@@ -6,6 +6,36 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace UltimateCleaningUtility;
 
+internal static class ThemeManager
+{
+    public static bool IsDark { get; set; } = true;
+    public static void Apply(Control root)
+    {
+        bool dark = IsDark;
+        Color panel = dark ? Color.FromArgb(24, 33, 47) : Color.White;
+        Color card = dark ? Color.FromArgb(29, 40, 56) : Color.FromArgb(232, 237, 243);
+        Color fg = dark ? Color.FromArgb(235, 241, 248) : Color.FromArgb(30, 39, 52);
+        Color bg = dark ? Color.FromArgb(15, 21, 31) : Color.FromArgb(245, 247, 250);
+        ApplyControl(root, bg, panel, card, fg, dark);
+    }
+    private static void ApplyControl(Control c, Color bg, Color panel, Color card, Color fg, bool dark)
+    {
+        if (c is Form) { c.BackColor = bg; c.ForeColor = fg; }
+        else if (c is ListView lv) { lv.BackColor = panel; lv.ForeColor = fg; }
+        else if (c is DataGridView grid) {
+            grid.BackgroundColor = panel; grid.DefaultCellStyle.BackColor = panel; grid.DefaultCellStyle.ForeColor = fg;
+            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(30, 115, 88); grid.DefaultCellStyle.SelectionForeColor = Color.White;
+            grid.ColumnHeadersDefaultCellStyle.BackColor = card; grid.ColumnHeadersDefaultCellStyle.ForeColor = fg; grid.EnableHeadersVisualStyles = false;
+        }
+        else if (c is TextBoxBase tb) { tb.BackColor = panel; tb.ForeColor = fg; }
+        else if (c is Button button) { button.BackColor = card; button.ForeColor = fg; button.FlatStyle = FlatStyle.Flat; button.FlatAppearance.BorderColor = dark ? Color.FromArgb(65, 78, 96) : Color.FromArgb(205, 214, 225); }
+        else if (c is Label label) { label.BackColor = Color.Transparent; label.ForeColor = fg; }
+        else if (c is LinkLabel link) { link.LinkColor = Color.FromArgb(30, 184, 126); link.ActiveLinkColor = Color.FromArgb(30, 184, 126); }
+        else if (c is Panel || c is GroupBox || c is TabPage) c.BackColor = panel;
+        else { c.BackColor = panel; c.ForeColor = fg; }
+        foreach (Control child in c.Controls) ApplyControl(child, bg, panel, card, fg, dark);
+    }
+}
 internal static class AdvancedToolForms
 {
     public static void ShowUninstaller(IWin32Window owner) { using var form = new AppUninstallerForm(); form.ShowDialog(owner); }
@@ -49,6 +79,7 @@ internal abstract class AdvancedToolForm : Form
             LogBox.Width = ClientSize.Width - 40;
             LogBox.Height = 120;
             LogBox.Top = ClientSize.Height - LogBox.Height - 18;
+            ThemeManager.Apply(this);
         };
         Shown += (_, _) =>
         {
