@@ -78,109 +78,276 @@ internal abstract class AdvancedToolForm : Form
 
 internal sealed class AppUninstallerForm : AdvancedToolForm
 {
+    private readonly TextBox _search = new() { Location = new Point(20, 94), Width = 610, Height = 28, PlaceholderText = "Search installed applications..." };
     private readonly ListView _apps = new();
     private readonly ListView _leftovers = new();
     private readonly Label _status = new() { AutoSize = true, ForeColor = Color.FromArgb(151, 166, 185) };
+    private readonly Button _refresh = new() { Text = "Refresh", Location = new Point(20, 350), Size = new Size(92, 34) };
+    private readonly Button _uninstall = new() { Text = "Uninstall selected", Location = new Point(120, 350), Size = new Size(155, 34) };
+    private readonly Button _scan = new() { Text = "Deep scan leftovers", Location = new Point(285, 350), Size = new Size(160, 34) };
+    private readonly Button _remove = new() { Text = "Remove checked", Location = new Point(455, 350), Size = new Size(145, 34) };
+    private readonly List<AppEntry> _allApps = new();
     private AppEntry? _selected;
+    private bool _busy;
 
-    public AppUninstallerForm() : base("App Uninstaller", "Revo-style workflow: launch the app's uninstaller, then inspect leftover folders before sending them to the Recycle Bin.")
+    public AppUninstallerForm() : base("App Uninstaller", "Uninstall desktop apps, then inspect matching leftover folders and registry keys. Every cleanup candidate starts unchecked.")
     {
-        _apps.Location = new Point(20, 94); _apps.Size = new Size(920, 225); _apps.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        StyleList(_apps); _apps.MultiSelect = false;
-        _apps.Columns.Add("Application", 280); _apps.Columns.Add("Publisher", 190); _apps.Columns.Add("Version", 100); _apps.Columns.Add("Install location", 330);
-        _apps.SelectedIndexChanged += (_, _) => _selected = _apps.SelectedItems.Count == 0 ? null : _apps.SelectedItems[0].Tag as AppEntry;
+        _search.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        _search.TextChanged += (_, _) => RenderApps();
+        Controls.Add(_search);
+
+        _apps.Location = new Point(20, 130);
+        _apps.Size = new Size(920, 205);
+        _apps.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        StyleList(_apps);
+        _apps.MultiSelect = false;
+        _apps.HideSelection = false;
+        _apps.Columns.Add("Application", 245);
+        _apps.Columns.Add("Publisher", 170);
+        _apps.Columns.Add("Version", 85);
+        _apps.Columns.Add("Installed", 90);
+        _apps.Columns.Add("Size", 80);
+        _apps.Columns.Add("Install location", 240);
+        _apps.SelectedIndexChanged += (_, _) =>
+        {
+            _selected = _apps.SelectedItems.Count == 0 ? null : _apps.SelectedItems[0].Tag as AppEntry;
+            _uninstall.Enabled = _selected != null && !_busy;
+            _scan.Enabled = _selected != null && !_busy;
+        };
         Controls.Add(_apps);
-        _status.Text = "Loading installed applications..."; _status.Location = new Point(22, 326); Controls.Add(_status);
-        AddButton("Refresh", 20, 350, 100, LoadApps);
-        AddButton("Uninstall selected", 130, 350, 155, UninstallSelected);
-        AddButton("Scan leftovers", 295, 350, 130, ScanLeftovers);
-        AddButton("Recycle checked", 435, 350, 145, RemoveLeftovers);
-        Controls.Add(new Label { Text = "Potential leftover folders — verify each full path before removal", AutoSize = true, Location = new Point(22, 396), ForeColor = Color.FromArgb(151, 166, 185) });
-        _leftovers.Location = new Point(20, 420); _leftovers.Size = new Size(920, 65); _leftovers.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        StyleList(_leftovers); _leftovers.CheckBoxes = true; _leftovers.Columns.Add("Folder path", 750); _leftovers.Columns.Add("Type", 130);
+
+        _status.Location = new Point(22, 323);
+        Controls.Add(_status);
+
+        foreach (var button in new[] { _refresh, _uninstall, _scan, _remove })
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.BackColor = Color.FromArgb(29, 40, 56);
+            button.ForeColor = Color.White;
+            button.FlatAppearance.BorderColor = Color.FromArgb(65, 78, 96);
+            button.Enabled = button == _refresh;
+            Controls.Add(button);
+        }
+        _refresh.Click += async (_, _) => await LoadAppsAsync();
+        _uninstall.Click += (_, _) => UninstallSelected();
+        _scan.Click += async (_, _) => await ScanLeftoversAsync();
+        _remove.Click += (_, _) => RemoveChecked();
+
+        Controls.Add(new Label
+        {
+            Text = "LEFTOVERS  ·  Review every path and registry key before removal",
+            AutoSize = true,
+            Location = new Point(22, 395),
+            ForeColor = Color.FromArgb(151, 166, 185),
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold)
+        });
+        _leftovers.Location = new Point(20, 420);
+        _leftovers.Size = new Size(920, 65);
+        _leftovers.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        StyleList(_leftovers);
+        _leftovers.CheckBoxes = true;
+        _leftovers.Columns.Add("Candidate", 610);
+        _leftovers.Columns.Add("Kind", 115);
+        _leftovers.Columns.Add("Details", 180);
         Controls.Add(_leftovers);
-        Resize += (_, _) => { _apps.Width = ClientSize.Width - 40; _leftovers.Width = ClientSize.Width - 40; _leftovers.Height = Math.Max(45, LogBox.Top - _leftovers.Top - 12); };
-        Load += (_, _) => LoadApps();
+
+        Resize += (_, _) =>
+        {
+            _search.Width = ClientSize.Width - 40;
+            _apps.Width = ClientSize.Width - 40;
+            _leftovers.Width = ClientSize.Width - 40;
+            _leftovers.Height = Math.Max(45, LogBox.Top - _leftovers.Top - 12);
+        };
+        Load += async (_, _) => await LoadAppsAsync();
+        _uninstall.Enabled = false;
+        _scan.Enabled = false;
+        _remove.Enabled = false;
     }
 
-    private void LoadApps()
+    private async Task LoadAppsAsync()
     {
+        if (_busy) return;
+        SetBusy(true, "Reading installed application registrations...");
         _apps.Items.Clear();
+        _allApps.Clear();
+        try
+        {
+            var entries = await Task.Run(ReadInstalledApps);
+            _allApps.AddRange(entries);
+            RenderApps();
+            _status.Text = _allApps.Count + " installed application entries found.";
+            WriteLog("Inventory refreshed. Sources: per-user and machine uninstall registrations, 32-bit and 64-bit views.");
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "Could not load the application inventory.";
+            WriteLog("Inventory error: " + ex.Message);
+        }
+        finally { SetBusy(false); }
+    }
+
+    private static List<AppEntry> ReadInstalledApps()
+    {
         var entries = new List<AppEntry>();
         foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
             try
             {
-                using var root = RegistryKey.OpenBaseKey(hive, view).OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                using var root = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
                 if (root == null) continue;
                 foreach (var keyName in root.GetSubKeyNames())
                 {
                     try
                     {
                         using var key = root.OpenSubKey(keyName);
-                        var name = key?.GetValue("DisplayName") as string;
-                        var command = key?.GetValue("QuietUninstallString") as string ?? key?.GetValue("UninstallString") as string;
-                        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(command) || Convert.ToInt32(key!.GetValue("SystemComponent", 0)) == 1) continue;
-                        entries.Add(new AppEntry(name, key.GetValue("Publisher") as string ?? "", key.GetValue("DisplayVersion") as string ?? "", key.GetValue("InstallLocation") as string ?? "", command));
+                        if (key == null) continue;
+                        var name = key.GetValue("DisplayName") as string;
+                        var command = key.GetValue("QuietUninstallString") as string ?? key.GetValue("UninstallString") as string;
+                        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(command)) continue;
+                        if (Convert.ToInt32(key.GetValue("SystemComponent", 0)) == 1) continue;
+                        var sizeKb = Convert.ToInt64(key.GetValue("EstimatedSize", 0L));
+                        var size = sizeKb > 0 ? FormatBytes(sizeKb * 1024) : "—";
+                        var date = key.GetValue("InstallDate") as string ?? "";
+                        if (date.Length == 8 && DateTime.TryParseExact(date, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var parsed))
+                            date = parsed.ToString("yyyy-MM-dd");
+                        entries.Add(new AppEntry(name.Trim(), key.GetValue("Publisher") as string ?? "",
+                            key.GetValue("DisplayVersion") as string ?? "", key.GetValue("InstallLocation") as string ?? "",
+                            command, date, size, hive, view, keyName));
                     }
                     catch { }
                 }
             }
-            catch (Exception ex) { WriteLog("Could not read an uninstall registry view: " + ex.Message); }
+            catch { }
         }
-        foreach (var entry in entries.GroupBy(e => e.Name + "|" + e.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).OrderBy(e => e.Name))
+        return entries
+            .GroupBy(e => e.Name + "|" + e.Command, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double value = bytes;
+        int unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return value.ToString("0.#") + " " + units[unit];
+    }
+
+    private void RenderApps()
+    {
+        if (IsDisposed) return;
+        var filter = _search.Text.Trim();
+        _apps.BeginUpdate();
+        _apps.Items.Clear();
+        foreach (var entry in _allApps.Where(e => filter.Length == 0 ||
+            e.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+            e.Publisher.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+            e.Version.Contains(filter, StringComparison.OrdinalIgnoreCase)))
         {
             var row = new ListViewItem(entry.Name);
-            row.SubItems.Add(entry.Publisher); row.SubItems.Add(entry.Version); row.SubItems.Add(entry.Location); row.Tag = entry;
+            row.SubItems.Add(entry.Publisher);
+            row.SubItems.Add(entry.Version);
+            row.SubItems.Add(entry.InstallDate);
+            row.SubItems.Add(entry.Size);
+            row.SubItems.Add(entry.Location);
+            row.Tag = entry;
             _apps.Items.Add(row);
         }
-        _status.Text = _apps.Items.Count + " installed application entries found.";
-        WriteLog("Application inventory refreshed.");
+        _apps.EndUpdate();
+        _status.Text = _apps.Items.Count + " of " + _allApps.Count + " applications shown.";
+        _uninstall.Enabled = _selected != null && !_busy;
+        _scan.Enabled = _selected != null && !_busy;
     }
 
     private void UninstallSelected()
     {
-        if (_selected == null) { MessageBox.Show(this, "Select an application first."); return; }
-        if (MessageBox.Show(this, "Launch the registered uninstaller for:\n\n" + _selected.Name + "\n\nComplete its prompts. The utility will not silently remove the application.", "Confirm uninstall", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        var app = _selected;
+        if (app == null) { MessageBox.Show(this, "Select an application first."); return; }
+        var answer = MessageBox.Show(this,
+            "This opens the application's registered uninstaller. Follow its prompts and return here when it finishes.\n\n" +
+            app.Name + "\n" + app.Publisher + "\n\nThe utility will not force-close or silently remove the application.",
+            "Confirm application uninstall", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (answer != DialogResult.Yes) return;
         try
         {
-            var command = Environment.ExpandEnvironmentVariables(_selected.Command.Trim());
+            var command = Environment.ExpandEnvironmentVariables(app.Command.Trim());
             ProcessStartInfo psi;
             if (command.StartsWith("msiexec", StringComparison.OrdinalIgnoreCase))
             {
-                var args = command[(command.IndexOf(' ') + 1)..];
-                args = System.Text.RegularExpressions.Regex.Replace(args, @"(?i)/I(?=\s*\{)", "/X");
-                psi = new ProcessStartInfo("msiexec.exe", args) { UseShellExecute = true };
+                var args = command.Length > 7 ? command[7..].Trim() : "";
+                args = System.Text.RegularExpressions.Regex.Replace(args, @"(?i)(^|\s)/I(?=\s*\{)", "$1/X");
+                psi = new ProcessStartInfo("msiexec.exe") { UseShellExecute = true, Arguments = args };
+            }
+            else if (command.StartsWith("\""))
+            {
+                var endQuote = command.IndexOf('"', 1);
+                if (endQuote < 0) throw new InvalidOperationException("The uninstall command contains invalid quotation marks.");
+                var exe = command[1..endQuote];
+                var args = command[(endQuote + 1)..].Trim();
+                psi = new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args };
             }
             else
             {
-                string exe, args;
-                if (command.StartsWith("\""))
-                {
-                    var end = command.IndexOf('"', 1);
-                    if (end < 0) throw new InvalidOperationException("Invalid uninstall command quoting.");
-                    exe = command[1..end]; args = command[(end + 1)..].Trim();
-                }
-                else
-                {
-                    var split = command.IndexOf(' ');
-                    exe = split < 0 ? command : command[..split];
-                    args = split < 0 ? "" : command[(split + 1)..];
-                }
-                psi = new ProcessStartInfo(exe, args) { UseShellExecute = true };
+                var split = command.IndexOf(' ');
+                var exe = split < 0 ? command : command[..split];
+                var args = split < 0 ? "" : command[(split + 1)..];
+                psi = new ProcessStartInfo(exe) { UseShellExecute = true, Arguments = args };
             }
             Process.Start(psi);
-            _status.Text = "Uninstaller launched. Complete its prompts, then scan for leftovers.";
-            WriteLog("Launched uninstaller for " + _selected.Name);
+            _status.Text = "Uninstaller launched. Finish its prompts, then select the same app and run Deep scan leftovers.";
+            WriteLog("Launched the registered uninstall command for " + app.Name);
         }
-        catch (Exception ex) { WriteLog("Uninstall launch failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex)
+        {
+            WriteLog("Uninstall launch failed: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
-    private void ScanLeftovers()
+    private async Task ScanLeftoversAsync()
     {
-        if (_selected == null) { MessageBox.Show(this, "Select the application you just uninstalled."); return; }
+        var app = _selected;
+        if (app == null) { MessageBox.Show(this, "Select the application you have just uninstalled."); return; }
+        if (MessageBox.Show(this,
+            "Scan common application-data folders and the application-specific Software registry locations for matches to:\n\n" +
+            app.Name + "\n\nThis scan is read-only. Results are suggestions and may include shared vendor data.",
+            "Deep leftover scan", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK) return;
+
         _leftovers.Items.Clear();
+        _remove.Enabled = false;
+        SetBusy(true, "Scanning possible leftovers for " + app.Name + "...");
+        try
+        {
+            var candidates = await Task.Run(() => FindLeftovers(app));
+            foreach (var candidate in candidates)
+            {
+                var row = new ListViewItem(candidate.Path);
+                row.SubItems.Add(candidate.Kind);
+                row.SubItems.Add(candidate.Description);
+                row.Tag = candidate;
+                row.Checked = false;
+                _leftovers.Items.Add(row);
+            }
+            _status.Text = candidates.Count + " possible leftover(s) found. Review carefully; none are preselected.";
+            _remove.Enabled = candidates.Count > 0;
+            WriteLog("Deep scan finished: " + candidates.Count + " candidate(s). The scan did not modify files or registry.");
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "Leftover scan failed.";
+            WriteLog("Leftover scan error: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Leftover scan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally { SetBusy(false); }
+    }
+
+    private static List<LeftoverCandidate> FindLeftovers(AppEntry app)
+    {
+        var found = new List<LeftoverCandidate>();
+        var tokens = GetMatchTokens(app.Name);
         var roots = new[]
         {
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -188,45 +355,153 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
-        }.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase);
-        var words = _selected.Name.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4).ToArray();
+        }.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
+         .Distinct(StringComparer.OrdinalIgnoreCase);
+
         foreach (var root in roots)
         {
             try
             {
-                foreach (var dir in Directory.GetDirectories(root, "*", System.IO.SearchOption.TopDirectoryOnly))
+                foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
                 {
-                    var folder = Path.GetFileName(dir);
-                    if (folder.Equals(_selected.Name, StringComparison.OrdinalIgnoreCase) || (words.Length > 0 && words.All(w => folder.Contains(w, StringComparison.OrdinalIgnoreCase))))
-                    {
-                        var row = new ListViewItem(dir); row.SubItems.Add("Folder"); row.Tag = dir; _leftovers.Items.Add(row);
-                    }
+                    var name = Path.GetFileName(dir);
+                    if (MatchesProductName(name, app.Name, tokens))
+                        found.Add(new LeftoverCandidate(dir, "Folder", "Application data / install folder", null, null));
                 }
             }
-            catch (Exception ex) { WriteLog("Skipped " + root + ": " + ex.Message); }
+            catch { }
         }
-        _status.Text = _leftovers.Items.Count + " possible leftover folder(s). Nothing is selected automatically.";
-        WriteLog("Leftover scan only checks common application-data folders. Registry entries are not removed automatically.");
-    }
 
-    private void RemoveLeftovers()
-    {
-        var rows = _leftovers.CheckedItems.Cast<ListViewItem>().ToList();
-        if (rows.Count == 0) { MessageBox.Show(this, "Tick the folders you have verified."); return; }
-        if (MessageBox.Show(this, "Move " + rows.Count + " checked folder(s) to the Recycle Bin?", "Confirm leftover removal", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-        foreach (var row in rows)
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
-            var path = row.Tag as string;
             try
             {
-                if (path != null && Directory.Exists(path)) FileSystem.DeleteDirectory(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-                _leftovers.Items.Remove(row);
-                WriteLog("Recycled: " + path);
+                using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                using var software = baseKey.OpenSubKey(@"SOFTWARE");
+                if (software == null) continue;
+                foreach (var vendorName in software.GetSubKeyNames())
+                {
+                    if (MatchesProductName(vendorName, app.Name, tokens))
+                        found.Add(new LeftoverCandidate(ToRegistryPath(hive, @"SOFTWARE\" + vendorName), "Registry key", hive + " · " + view, hive, view));
+                    try
+                    {
+                        using var vendor = software.OpenSubKey(vendorName);
+                        if (vendor == null) continue;
+                        foreach (var productName in vendor.GetSubKeyNames())
+                        {
+                            if (!MatchesProductName(productName, app.Name, tokens)) continue;
+                            var relative = @"SOFTWARE\" + vendorName + @"\" + productName;
+                            found.Add(new LeftoverCandidate(ToRegistryPath(hive, relative), "Registry key", hive + " · " + view, hive, view));
+                        }
+                    }
+                    catch { }
+                }
             }
-            catch (Exception ex) { WriteLog("Could not recycle " + path + ": " + ex.Message); }
+            catch { }
         }
+        return found.GroupBy(x => x.Path, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .OrderBy(x => x.Kind, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase).ToList();
     }
-    private sealed record AppEntry(string Name, string Publisher, string Version, string Location, string Command);
+
+    private static string[] GetMatchTokens(string name)
+    {
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "microsoft", "windows", "update", "the", "and", "for", "with", "edition", "version", "redistributable", "runtime", "package", "installer", "setup", "x64", "x86", "64bit", "32bit" };
+        return name.Split(new[] { ' ', '-', '_', '.', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 4 && !ignored.Contains(w)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static bool MatchesProductName(string candidate, string appName, string[] tokens)
+    {
+        if (candidate.Equals(appName, StringComparison.OrdinalIgnoreCase)) return true;
+        if (tokens.Length == 0) return false;
+        return tokens.All(token => candidate.Contains(token, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ToRegistryPath(RegistryHive hive, string relative) =>
+        (hive == RegistryHive.CurrentUser ? "HKCU\\" : "HKLM\\") + relative;
+
+    private void RemoveChecked()
+    {
+        var rows = _leftovers.CheckedItems.Cast<ListViewItem>().ToList();
+        if (rows.Count == 0) { MessageBox.Show(this, "Tick only the leftover candidates you have personally verified."); return; }
+        var registryCount = rows.Count(r => (r.Tag as LeftoverCandidate)?.Kind == "Registry key");
+        var folderCount = rows.Count - registryCount;
+        var answer = MessageBox.Show(this,
+            "Move " + folderCount + " folder(s) to the Recycle Bin and remove " + registryCount +
+            " registry key(s)?\n\nRegistry keys will first be exported to a dated backup folder under Documents. Shared vendor settings may affect other products. Continue only with entries you have verified.",
+            "Confirm leftover cleanup", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (answer != DialogResult.Yes) return;
+
+        var backupRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "EXE COMPUTERS", "Uninstaller Registry Backups", DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+        foreach (var row in rows)
+        {
+            if (row.Tag is not LeftoverCandidate candidate) continue;
+            try
+            {
+                if (candidate.Kind == "Folder")
+                {
+                    if (Directory.Exists(candidate.Path))
+                        FileSystem.DeleteDirectory(candidate.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                    WriteLog("Sent folder to Recycle Bin: " + candidate.Path);
+                }
+                else if (candidate.Hive.HasValue && candidate.View.HasValue)
+                {
+                    Directory.CreateDirectory(backupRoot);
+                    var backupFile = Path.Combine(backupRoot, SafeFileName(candidate.Path) + ".reg");
+                    var export = new ProcessStartInfo("reg.exe")
+                    {
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        Arguments = "export \"" + candidate.Path + "\" \"" + backupFile + "\" /y"
+                    };
+                    using var process = Process.Start(export);
+                    process?.WaitForExit();
+                    if (process == null || process.ExitCode != 0 || !File.Exists(backupFile))
+                        throw new InvalidOperationException("Registry export failed; key was not deleted.");
+                    var relative = candidate.Path.StartsWith("HKCU\\", StringComparison.OrdinalIgnoreCase)
+                        ? candidate.Path[5..] : candidate.Path[5..];
+                    using var baseKey = RegistryKey.OpenBaseKey(candidate.Hive.Value, candidate.View.Value);
+                    baseKey.DeleteSubKeyTree(relative, false);
+                    WriteLog("Backed up and removed registry key: " + candidate.Path);
+                }
+                _leftovers.Items.Remove(row);
+            }
+            catch (Exception ex)
+            {
+                WriteLog("Could not clean " + candidate.Path + ": " + ex.Message);
+                MessageBox.Show(this, "Could not clean:\n" + candidate.Path + "\n\n" + ex.Message,
+                    "Cleanup item skipped", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        if (Directory.Exists(backupRoot))
+            WriteLog("Registry backup files saved to: " + backupRoot);
+        _status.Text = "Selected cleanup finished. Refresh the inventory to verify uninstall status.";
+    }
+
+    private static string SafeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var name = string.Concat(value.Select(c => invalid.Contains(c) ? '_' : c));
+        return name.Length > 110 ? name[^110..] : name;
+    }
+
+    private void SetBusy(bool busy, string? message = null)
+    {
+        _busy = busy;
+        _refresh.Enabled = !busy;
+        _uninstall.Enabled = !busy && _selected != null;
+        _scan.Enabled = !busy && _selected != null;
+        _remove.Enabled = !busy && _leftovers.Items.Count > 0;
+        _search.Enabled = !busy;
+        if (!string.IsNullOrWhiteSpace(message)) _status.Text = message;
+    }
+
+    private sealed record AppEntry(string Name, string Publisher, string Version, string Location,
+        string Command, string InstallDate, string Size, RegistryHive Hive, RegistryView View, string RegistryKeyName);
+    private sealed record LeftoverCandidate(string Path, string Kind, string Description, RegistryHive? Hive, RegistryView? View);
 }
 
 internal sealed class DuplicateFinderForm : AdvancedToolForm
