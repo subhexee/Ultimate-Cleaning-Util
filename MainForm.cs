@@ -336,7 +336,7 @@ public sealed class MainForm : Form
                 _log.Visible = true;
                 _main.Visible = true;
                 _sidebar.Visible = true;
-                    }
+            }
         });
         consoleHeader.Resize += (_, _) =>
         {
@@ -392,7 +392,7 @@ public sealed class MainForm : Form
         _shell.Padding = Padding.Empty;
         _shell.ColumnCount = 2;
         _shell.RowCount = 2;
-        _shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 218));
+        _shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         _shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
