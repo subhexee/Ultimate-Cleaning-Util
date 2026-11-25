@@ -21,8 +21,9 @@ internal sealed class StartupManagerForm : Form
         Icon = Branding.CreateIcon();
         Text = "Startup Manager";
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(900, 580);
+        MinimumSize = new Size(1000, 620);
         Size = new Size(1120, 720);
+        AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9.5f);
         BackColor = Color.FromArgb(17, 24, 36);
         ForeColor = Color.FromArgb(235, 241, 248);
@@ -112,6 +113,9 @@ internal sealed class StartupManagerForm : Form
             _grid.SetBounds(0, 162, ClientSize.Width, Math.Max(80, ClientSize.Height - 226));
             _apply.Left = footer.ClientSize.Width - _apply.Width - 18;
             refresh.Left = _apply.Left - refresh.Width - 10;
+            _summary.AutoSize = false;
+            _summary.SetBounds(18, 18, Math.Max(120, refresh.Left - 34), 34);
+            _summary.AutoEllipsis = true;
         }
         LayoutStartupPanels();
         Resize += (_, _) => LayoutStartupPanels();
