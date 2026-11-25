@@ -516,9 +516,9 @@ public sealed class MainForm : Form
 
     private void AddOperations()
     {
-        AddCard("Temporary files", "User temp", "Removes files from your account's temporary folder. Files in use are skipped.", "LOW RISK", true, CleanupEngine.CleanUserTempAsync);
-        AddCard("Temporary files", "Windows temp", "Removes eligible files from the Windows temporary folder. Requires administrator access.", "LOW RISK", true, CleanupEngine.CleanWindowsTempAsync);
-        AddCard("Caches", "Thumbnail cache", "Removes rebuildable Explorer thumbnail databases. Windows recreates them.", "LOW RISK", true, CleanupEngine.CleanThumbnailCacheAsync);
+        AddCard("Temporary files", "User temp", "Removes files from your account's temporary folder. Files in use are skipped.", "LOW RISK", false, CleanupEngine.CleanUserTempAsync);
+        AddCard("Temporary files", "Windows temp", "Removes eligible files from the Windows temporary folder. Requires administrator access.", "LOW RISK", false, CleanupEngine.CleanWindowsTempAsync);
+        AddCard("Caches", "Thumbnail cache", "Removes rebuildable Explorer thumbnail databases. Windows recreates them.", "LOW RISK", false, CleanupEngine.CleanThumbnailCacheAsync);
         AddCard("Caches", "Internet cache", "Clears the current user's legacy Windows INetCache folder.", "LOW RISK", false, CleanupEngine.CleanInternetCacheAsync);
         AddCard("Caches", "DirectX shader cache", "Removes rebuildable DirectX shader cache files. Windows and games recreate them as needed.", "LOW RISK", false, CleanupEngine.CleanShaderCacheAsync);
         AddCard("Cleanup", "Windows error reports", "Removes queued and archived Windows Error Reporting files. Does not affect Windows system files.", "LOW RISK", false, CleanupEngine.CleanWindowsErrorReportsAsync);
