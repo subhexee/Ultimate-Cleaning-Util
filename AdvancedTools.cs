@@ -345,7 +345,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         catch { /* Keep classic desktop-app inventory available if AppX enumeration is unavailable. */ }
 
         return entries
-            .GroupBy(e => e.IsMsix ? "MSIX|" + e.PackageFullName : e.Name + "|" + e.Command, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(e => e.IsMsix ? "MSIX|" + e.RegistryKeyName : e.Name + "|" + e.Command, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
