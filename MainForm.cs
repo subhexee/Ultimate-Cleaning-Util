@@ -304,9 +304,13 @@ public sealed class MainForm : Form
             _consoleFullScreen = false;
             _consoleMinimized = true;
             _console.Dock = DockStyle.Bottom;
-            _console.Height = 42;
+            // Keep the console title bar visible so its controls remain accessible.
+            _console.Height = 54;
+            _log.Visible = false;
             _main.Visible = true;
             _sidebar.Visible = true;
+            _console.BringToFront();
+            consoleHeader.BringToFront();
         });
         var maximizeConsole = ConsoleControl("Maximize", 82, () =>
         {
@@ -314,8 +318,11 @@ public sealed class MainForm : Form
             _consoleMinimized = false;
             _console.Dock = DockStyle.Bottom;
             _console.Height = Math.Min(430, Math.Max(260, ClientSize.Height / 2));
+            _log.Visible = true;
             _main.Visible = true;
             _sidebar.Visible = true;
+            _console.BringToFront();
+            consoleHeader.BringToFront();
         });
         var fullscreenConsole = ConsoleControl("Fullscreen", 88, () =>
         {
@@ -331,8 +338,11 @@ public sealed class MainForm : Form
                 _consoleFullScreen = false;
                 _console.Dock = DockStyle.Bottom;
                 _console.Height = _consoleExpanded ? 390 : 220;
+                _log.Visible = true;
                 _main.Visible = true;
                 _sidebar.Visible = true;
+                _console.BringToFront();
+                consoleHeader.BringToFront();
                 _main.BringToFront();
                 _sidebar.BringToFront();
             }
