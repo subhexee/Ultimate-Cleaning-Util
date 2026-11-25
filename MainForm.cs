@@ -46,10 +46,15 @@ public sealed class MainForm : Form
     {
         Text = "Ultimate Cleaning Utility ReDesigned";
         Icon = Branding.CreateIcon();
-        MinimumSize = new Size(1050, 720);
-        Size = new Size(1280, 850);
+        MinimumSize = new Size(1100, 720);
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
+        // Give the General Tools workspace more room on larger displays while
+        // keeping the initial window inside the user's available desktop area.
+        var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1366, 768);
+        Size = new Size(
+            Math.Min(1600, Math.Max(1100, (int)(workArea.Width * 0.94))),
+            Math.Min(1000, Math.Max(720, (int)(workArea.Height * 0.94))));
         Font = new Font("Segoe UI", 9.5f);
         BuildShell();
         AddOperations();
