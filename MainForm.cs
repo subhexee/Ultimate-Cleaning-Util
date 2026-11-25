@@ -6,7 +6,7 @@ namespace UltimateCleaningUtility;
 
 public sealed class MainForm : Form
 {
-    private readonly FlowLayoutPanel _operations = new();
+    private readonly RealtimeFlowLayoutPanel _operations = new();
     private readonly FlowLayoutPanel _filterBar = new();
     private readonly FlowLayoutPanel _featuredTools = new();
     private string _activeFilter = "All";
@@ -211,7 +211,15 @@ public sealed class MainForm : Form
 
         _operations.Dock = DockStyle.Fill;
         _operations.AutoScroll = true;
+        _operations.HorizontalScroll.Enabled = false;
+        _operations.HorizontalScroll.Visible = false;
         _operations.WrapContents = true;
+        _operations.Scroll += (_, _) =>
+        {
+            // Force a paint immediately while the native scrollbar thumb is moving.
+            _operations.Invalidate(true);
+            _operations.Update();
+        };
         _operations.FlowDirection = FlowDirection.LeftToRight;
         _operations.Padding = new Padding(0, 2, 6, 8);
         _main.Controls.Add(_operations);
@@ -833,6 +841,32 @@ public sealed class MainForm : Form
         else if (control is Label l)
             l.ForeColor = _dark ? DarkText : Color.FromArgb(30, 39, 52);
         foreach (Control child in control.Controls) ThemeControl(child);
+    }
+}
+
+internal sealed class RealtimeFlowLayoutPanel : FlowLayoutPanel
+{
+    private const int WmVScroll = 0x0115;
+    private const int WmHScroll = 0x0114;
+    private const int WmMouseWheel = 0x020A;
+
+    public RealtimeFlowLayoutPanel()
+    {
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg == WmVScroll || m.Msg == WmHScroll || m.Msg == WmMouseWheel)
+        {
+            // Update synchronously on every scroll/track message instead of waiting
+            // for the next idle paint, keeping the cards in step with the scrollbar.
+            Invalidate(true);
+            Update();
+        }
     }
 }
 
