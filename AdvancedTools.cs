@@ -22,8 +22,9 @@ internal abstract class AdvancedToolForm : Form
         Text = title + " — Ultimate Cleaning Utility";
         Icon = Branding.CreateIcon();
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(1050, 760);
-        Size = new Size(1120, 820);
+        // Advanced tools contain dense inventories and review tables; start larger to avoid cramped controls.
+        MinimumSize = new Size(1180, 820);
+        Size = new Size(1440, 980);
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9.5f);
         BackColor = Color.FromArgb(18, 25, 37);
@@ -100,10 +101,11 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
     private readonly ListView _apps = new();
     private readonly ListView _leftovers = new();
     private readonly Label _status = new() { AutoSize = true, ForeColor = Color.FromArgb(151, 166, 185) };
-    private readonly Button _refresh = new() { Text = "Refresh", Location = new Point(20, 350), Size = new Size(92, 34) };
-    private readonly Button _uninstall = new() { Text = "Uninstall selected", Location = new Point(120, 350), Size = new Size(155, 34) };
-    private readonly Button _scan = new() { Text = "Deep scan leftovers", Location = new Point(285, 350), Size = new Size(160, 34) };
-    private readonly Button _remove = new() { Text = "Remove checked", Location = new Point(455, 350), Size = new Size(145, 34) };
+    private readonly Button _refresh = new() { Text = "Refresh", Location = new Point(20, 415), Size = new Size(92, 34) };
+    private readonly Button _uninstall = new() { Text = "Uninstall selected", Location = new Point(120, 415), Size = new Size(155, 34) };
+    private readonly Button _scan = new() { Text = "Deep scan leftovers", Location = new Point(285, 415), Size = new Size(160, 34) };
+    private readonly Button _remove = new() { Text = "Remove checked", Location = new Point(455, 415), Size = new Size(145, 34) };
+    private readonly Label _leftoversHeading = new() { Text = "LEFTOVERS  ·  Review every path and registry key before removal", AutoSize = true, Location = new Point(22, 460), ForeColor = Color.FromArgb(151, 166, 185), Font = new Font("Segoe UI", 8.5f, FontStyle.Bold) };
     private readonly List<AppEntry> _allApps = new();
     private AppEntry? _selected;
     private bool _busy;
@@ -115,7 +117,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         Controls.Add(_search);
 
         _apps.Location = new Point(20, 130);
-        _apps.Size = new Size(920, 205);
+        _apps.Size = new Size(920, 250);
         _apps.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         StyleList(_apps);
         _apps.MultiSelect = false;
@@ -134,7 +136,7 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         };
         Controls.Add(_apps);
 
-        _status.Location = new Point(22, 323);
+        _status.Location = new Point(22, 388);
         Controls.Add(_status);
 
         foreach (var button in new[] { _refresh, _uninstall, _scan, _remove })
@@ -151,16 +153,9 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         _scan.Click += async (_, _) => await ScanLeftoversAsync();
         _remove.Click += (_, _) => RemoveChecked();
 
-        Controls.Add(new Label
-        {
-            Text = "LEFTOVERS  ·  Review every path and registry key before removal",
-            AutoSize = true,
-            Location = new Point(22, 395),
-            ForeColor = Color.FromArgb(151, 166, 185),
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold)
-        });
-        _leftovers.Location = new Point(20, 420);
-        _leftovers.Size = new Size(920, 65);
+        Controls.Add(_leftoversHeading);
+        _leftovers.Location = new Point(20, 485);
+        _leftovers.Size = new Size(920, 120);
         _leftovers.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         StyleList(_leftovers);
         _leftovers.CheckBoxes = true;
@@ -169,17 +164,50 @@ internal sealed class AppUninstallerForm : AdvancedToolForm
         _leftovers.Columns.Add("Details", 180);
         Controls.Add(_leftovers);
 
-        Resize += (_, _) =>
-        {
-            _search.Width = ClientSize.Width - 40;
-            _apps.Width = ClientSize.Width - 40;
-            _leftovers.Width = ClientSize.Width - 40;
-            _leftovers.Height = Math.Max(45, LogBox.Top - _leftovers.Top - 12);
-        };
+        Resize += (_, _) => LayoutUninstaller();
+        Shown += (_, _) => LayoutUninstaller();
         Load += async (_, _) => await LoadAppsAsync();
         _uninstall.Enabled = false;
         _scan.Enabled = false;
         _remove.Enabled = false;
+    }
+
+    private void LayoutUninstaller()
+    {
+        if (IsDisposed || ClientSize.Width <= 0) return;
+        var contentWidth = Math.Max(700, ClientSize.Width - 40);
+        _search.Width = contentWidth;
+        _apps.Width = contentWidth;
+        _leftovers.Width = contentWidth;
+
+        _apps.Height = 250;
+        _status.Top = _apps.Bottom + 8;
+        var actionTop = _status.Bottom + 10;
+        foreach (var button in new[] { _refresh, _uninstall, _scan, _remove })
+            button.Top = actionTop;
+        _leftoversHeading.Top = actionTop + 45;
+        _leftovers.Top = _leftoversHeading.Bottom + 8;
+        _leftovers.Height = Math.Max(110, LogBox.Top - _leftovers.Top - 12);
+
+        var widths = new[]
+        {
+            (int)(contentWidth * 0.25),
+            (int)(contentWidth * 0.17),
+            (int)(contentWidth * 0.10),
+            (int)(contentWidth * 0.11),
+            (int)(contentWidth * 0.09)
+        };
+        for (int i = 0; i < widths.Length; i++)
+            if (_apps.Columns.Count > i) _apps.Columns[i].Width = widths[i];
+        if (_apps.Columns.Count > 5)
+            _apps.Columns[5].Width = Math.Max(150, contentWidth - widths.Sum());
+
+        if (_leftovers.Columns.Count >= 3)
+        {
+            _leftovers.Columns[0].Width = (int)(contentWidth * 0.66);
+            _leftovers.Columns[1].Width = (int)(contentWidth * 0.13);
+            _leftovers.Columns[2].Width = contentWidth - _leftovers.Columns[0].Width - _leftovers.Columns[1].Width;
+        }
     }
 
     private async Task LoadAppsAsync()
