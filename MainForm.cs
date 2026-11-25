@@ -307,32 +307,49 @@ public sealed class MainForm : Form
         }
         var minimizeConsole = ConsoleControl("Minimize", 78, () =>
         {
+            // Always move the console out of fullscreen's row-0 / two-row
+            // span before shrinking it. Otherwise it continues covering the
+            // workspace and its 40px height is applied to the wrong row.
             _consoleFullScreen = false;
             _consoleMinimized = true;
+            _shell.SetRowSpan(_console, 1);
+            _shell.SetColumnSpan(_console, 2);
+            _shell.SetRow(_console, 1);
+            _shell.RowStyles[0].SizeType = SizeType.Percent;
+            _shell.RowStyles[0].Height = 100;
+            _shell.RowStyles[1].SizeType = SizeType.Absolute;
+            _shell.RowStyles[1].Height = 40;
+            _console.Visible = true;
+            _main.Visible = true;
+            _sidebar.Visible = true;
 
-            // Keep the header and its controls visible. The progress/footer row
-            // and outer padding must be removed or they consume the entire
-            // compact shell row and clip the console header.
+            // Keep the header and its controls visible in the compact strip.
             _console.Padding = Padding.Empty;
             bottom.Visible = false;
             _log.Visible = false;
-            _shell.RowStyles[1].Height = 40;
-            _main.Visible = true;
-            _sidebar.Visible = true;
             _console.PerformLayout();
+            _shell.PerformLayout();
             consoleHeader.PerformLayout();
         });
         var maximizeConsole = ConsoleControl("Maximize", 82, () =>
         {
             _consoleFullScreen = false;
             _consoleMinimized = false;
-            _console.Padding = new Padding(14, 10, 14, 10);
-            bottom.Visible = true;
+            _shell.SetRowSpan(_console, 1);
+            _shell.SetColumnSpan(_console, 2);
+            _shell.SetRow(_console, 1);
+            _shell.RowStyles[0].SizeType = SizeType.Percent;
+            _shell.RowStyles[0].Height = 100;
+            _shell.RowStyles[1].SizeType = SizeType.Absolute;
             _shell.RowStyles[1].Height = Math.Min(430, Math.Max(260, ClientSize.Height / 2));
-            _log.Visible = true;
+            _console.Visible = true;
             _main.Visible = true;
             _sidebar.Visible = true;
+            _console.Padding = new Padding(14, 10, 14, 10);
+            bottom.Visible = true;
+            _log.Visible = true;
             _console.PerformLayout();
+            _shell.PerformLayout();
         });
         var fullscreenConsole = ConsoleControl("Fullscreen", 88, () =>
         {
