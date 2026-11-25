@@ -126,6 +126,10 @@ public sealed class MainForm : Form
         summary.Controls.Add(safeCard);
         _main.Controls.Add(summary);
 
+        var advancedToolsHeader = new Panel { Dock = DockStyle.Top, Height = 23 };
+        advancedToolsHeader.Controls.Add(new Label { Text = "ADVANCED TOOLS", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Accent, Location = new Point(1, 2) });
+        _main.Controls.Add(advancedToolsHeader);
+
         _featuredTools.Dock = DockStyle.Top;
         _featuredTools.Height = 48;
         _featuredTools.FlowDirection = FlowDirection.LeftToRight;
@@ -138,6 +142,10 @@ public sealed class MainForm : Form
         AddFeaturedTool("Windows Debloat", () => AdvancedToolForms.ShowDebloat(this));
         AddFeaturedTool("Startup Manager", () => LaunchStartupFeatured());
         _main.Controls.Add(_featuredTools);
+
+        var generalToolsHeader = new Panel { Dock = DockStyle.Top, Height = 23 };
+        generalToolsHeader.Controls.Add(new Label { Text = "GENERAL TOOLS", AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Accent, Location = new Point(1, 2) });
+        _main.Controls.Add(generalToolsHeader);
 
         _filterBar.Dock = DockStyle.Top;
         _filterBar.Height = 44;
@@ -335,9 +343,11 @@ public sealed class MainForm : Form
         _main.Controls.SetChildIndex(actionBar, 1);
         _main.Controls.SetChildIndex(contentHeader, 2);
         _main.Controls.SetChildIndex(_filterBar, 3);
-        _main.Controls.SetChildIndex(_featuredTools, 4);
-        _main.Controls.SetChildIndex(summary, 5);
-        _main.Controls.SetChildIndex(top, 6);
+        _main.Controls.SetChildIndex(generalToolsHeader, 4);
+        _main.Controls.SetChildIndex(_featuredTools, 5);
+        _main.Controls.SetChildIndex(advancedToolsHeader, 6);
+        _main.Controls.SetChildIndex(summary, 7);
+        _main.Controls.SetChildIndex(top, 8);
     }
 
     private void AddFeaturedTool(string title, Action launch)
@@ -450,6 +460,7 @@ public sealed class MainForm : Form
                 _startupForm.FormClosed += (_, _) =>
                 {
                     _startupForm = null;
+                    ResetStartupLaunchButtons();
                     Log("STARTUP", "Startup manager closed.");
                 };
                 _startupForm.Show(this);
@@ -461,11 +472,21 @@ public sealed class MainForm : Form
         }
         finally
         {
-            if (_startupFilterButton != null)
-            {
-                _startupFilterButton.Text = "Startup Manager";
-                _startupFilterButton.Enabled = true;
-            }
+            ResetStartupLaunchButtons();
+        }
+    }
+
+    private void ResetStartupLaunchButtons()
+    {
+        if (_startupFilterButton != null)
+        {
+            _startupFilterButton.Text = "Startup Manager";
+            _startupFilterButton.Enabled = true;
+        }
+        if (_startupFeaturedButton != null)
+        {
+            _startupFeaturedButton.Text = "Startup Manager";
+            _startupFeaturedButton.Enabled = true;
         }
     }
 
