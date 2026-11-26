@@ -42,7 +42,25 @@ internal static class AdvancedToolForms
     public static void ShowDuplicateFinder(IWin32Window owner) { using var form = new DuplicateFinderForm(); form.ShowDialog(owner); }
     public static void ShowGaming(IWin32Window owner) { using var form = new GamingOptimizationForm(); form.ShowDialog(owner); }
     public static void ShowDebloat(IWin32Window owner) { using var form = new DebloatForm(); form.ShowDialog(owner); }
-    public static void ShowUsbCreator(IWin32Window owner) { using var form = new UsbMediaCreatorForm(); form.ShowDialog(owner); }
+    public static void ShowUsbCreator(IWin32Window owner)
+    {
+        try
+        {
+            using var form = new UsbMediaCreatorForm();
+            form.ShowDialog(owner);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EXE COMPUTERS", "Ultimate Cleaning Utility");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "usb-creator-crash.log"), $"[{DateTime.Now:O}] {ex}\\r\\n\\r\\n");
+            }
+            catch { }
+            MessageBox.Show(owner, "USB Bootable Media Creator could not start. The main utility has been protected from the startup error.\\n\\n" + ex.Message, "USB Creator startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
 }
 
 internal abstract class AdvancedToolForm : Form
