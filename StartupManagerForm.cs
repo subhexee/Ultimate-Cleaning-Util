@@ -15,6 +15,11 @@ internal sealed class StartupManagerForm : Form
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "EXE COMPUTERS", "Ultimate Cleaning Utility", "Disabled Startup");
     private readonly List<StartupEntry> _entries = new();
+    private readonly TextBox _search = new() { PlaceholderText = "Search startup name, path or command...", Width = 430, Height = 28 };
+    private readonly ComboBox _typeFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190 };
+    private readonly ComboBox _stateFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
+    private readonly Button _export = new() { Text = "Export CSV", Width = 100, Height = 36 };
+
 
     public StartupManagerForm()
     {
@@ -57,6 +62,25 @@ internal sealed class StartupManagerForm : Form
             BackColor = Color.FromArgb(30, 43, 60)
         };
         Controls.Add(note);
+        var filters = new Panel { Height = 42, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = ThemeManager.IsDark ? Color.FromArgb(17, 24, 36) : Color.FromArgb(245, 247, 250) };
+        _search.Location = new Point(18, 6);
+        _search.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        _typeFilter.Items.AddRange(new object[] { "All entry types", "Registry", "Startup folder", "Scheduled task", "Service", "Driver", "Read-only / info" });
+        _typeFilter.SelectedIndex = 0;
+        _typeFilter.Location = new Point(470, 6);
+        _typeFilter.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _stateFilter.Items.AddRange(new object[] { "All states", "Enabled", "Disabled", "Read-only" });
+        _stateFilter.SelectedIndex = 0;
+        _stateFilter.Location = new Point(670, 6);
+        _stateFilter.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        var clearFilters = new Button { Text = "Clear", Width = 70, Height = 28, Location = new Point(830, 6), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+        _search.TextChanged += (_, _) => ApplyGridFilters();
+        _typeFilter.SelectedIndexChanged += (_, _) => ApplyGridFilters();
+        _stateFilter.SelectedIndexChanged += (_, _) => ApplyGridFilters();
+        clearFilters.Click += (_, _) => { _search.Clear(); _typeFilter.SelectedIndex = 0; _stateFilter.SelectedIndex = 0; };
+        filters.Controls.AddRange(new Control[] { _search, _typeFilter, _stateFilter, clearFilters });
+        Controls.Add(filters);
+
 
         _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _grid.AllowUserToAddRows = false;
@@ -90,6 +114,11 @@ internal sealed class StartupManagerForm : Form
         var refresh = new Button { Text = "Refresh", Width = 100, Height = 36, Anchor = AnchorStyles.Right | AnchorStyles.Top, Location = new Point(690, 13) };
         refresh.Click += async (_, _) => await LoadEntriesAsync();
         footer.Controls.Add(refresh);
+        _export.Height = 36;
+        _export.Anchor = AnchorStyles.Right | AnchorStyles.Top;
+        _export.Click += (_, _) => ExportInventory();
+        footer.Controls.Add(_export);
+
 
         _apply.Text = "Run tweaks";
         _apply.Width = 140;
@@ -109,12 +138,18 @@ internal sealed class StartupManagerForm : Form
         {
             header.SetBounds(0, 0, ClientSize.Width, 104);
             note.SetBounds(0, 104, ClientSize.Width, 58);
+            filters.SetBounds(0, 162, ClientSize.Width, 42);
+            _search.SetBounds(18, 6, Math.Max(220, filters.ClientSize.Width - 640), 28);
+            _typeFilter.SetBounds(filters.ClientSize.Width - 590, 6, 190, 28);
+            _stateFilter.SetBounds(filters.ClientSize.Width - 390, 6, 150, 28);
+            clearFilters.SetBounds(filters.ClientSize.Width - 230, 6, 70, 28);
             footer.SetBounds(0, ClientSize.Height - 64, ClientSize.Width, 64);
-            _grid.SetBounds(0, 162, ClientSize.Width, Math.Max(80, ClientSize.Height - 226));
+            _grid.SetBounds(0, 204, ClientSize.Width, Math.Max(80, ClientSize.Height - 268));
             _apply.Left = footer.ClientSize.Width - _apply.Width - 18;
             refresh.Left = _apply.Left - refresh.Width - 10;
+            _export.Left = refresh.Left - _export.Width - 10;
             _summary.AutoSize = false;
-            _summary.SetBounds(18, 18, Math.Max(120, refresh.Left - 34), 34);
+            _summary.SetBounds(18, 18, Math.Max(120, _export.Left - 34), 34);
             _summary.AutoEllipsis = true;
         }
         LayoutStartupPanels();
@@ -168,8 +203,76 @@ internal sealed class StartupManagerForm : Form
             }
             var editable = _entries.Count(x => !x.ReadOnly);
             _summary.Text = $"{_entries.Count} entries found  •  {editable} manageable  •  Checked entries are enabled";
+            ApplyGridFilters();
             _grid.Enabled = true;
             _apply.Enabled = true;
+        }
+    }
+
+
+    private void ApplyGridFilters()
+    {
+        if (_grid.Rows.Count == 0) return;
+        var query = _search.Text.Trim();
+        var type = _typeFilter.SelectedItem?.ToString() ?? "All entry types";
+        var state = _stateFilter.SelectedItem?.ToString() ?? "All states";
+        int visible = 0;
+        foreach (DataGridViewRow row in _grid.Rows)
+        {
+            if (row.Tag is not StartupEntry entry) continue;
+            bool matchesText = query.Length == 0 ||
+                new[] { entry.Name, entry.Type, entry.Location, entry.Command }.Any(v => v.Contains(query, StringComparison.OrdinalIgnoreCase));
+            bool matchesType = type switch
+            {
+                "Registry" => entry.Type.Contains("Registry", StringComparison.OrdinalIgnoreCase),
+                "Startup folder" => entry.Type.Contains("Startup folder", StringComparison.OrdinalIgnoreCase),
+                "Scheduled task" => entry.Type.Contains("Scheduled task", StringComparison.OrdinalIgnoreCase),
+                "Service" => entry.Type.Contains("service", StringComparison.OrdinalIgnoreCase),
+                "Driver" => entry.Type.Contains("driver", StringComparison.OrdinalIgnoreCase),
+                "Read-only / info" => entry.ReadOnly,
+                _ => true
+            };
+            bool matchesState = state switch
+            {
+                "Enabled" => !entry.ReadOnly && entry.Enabled,
+                "Disabled" => !entry.ReadOnly && !entry.Enabled,
+                "Read-only" => entry.ReadOnly,
+                _ => true
+            };
+            row.Visible = matchesText && matchesType && matchesState;
+            if (row.Visible) visible++;
+        }
+        _summary.Text = $"{visible} shown / {_entries.Count} entries  •  {_entries.Count(x => !x.ReadOnly)} manageable  •  Checked entries are enabled";
+    }
+
+    private void ExportInventory()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Export startup inventory",
+            Filter = "CSV files (*.csv)|*.csv",
+            FileName = $"StartupInventory_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+            AddExtension = true,
+            DefaultExt = "csv"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            static string Csv(string value) => "\"" + (value ?? "").Replace("\"", "\"\"") + "\"";
+            var rows = new List<string> { "Enabled,ReadOnly,Name,Type,Location,Command" };
+            foreach (var entry in _entries)
+                rows.Add(string.Join(",", new[]
+                {
+                    entry.Enabled ? "true" : "false",
+                    entry.ReadOnly ? "true" : "false",
+                    Csv(entry.Name), Csv(entry.Type), Csv(entry.Location), Csv(entry.Command)
+                }));
+            File.WriteAllLines(dialog.FileName, rows, new UTF8Encoding(true));
+            _summary.Text = $"Exported {_entries.Count} entries to {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not export the startup inventory.\n\n" + ex.Message, "Export CSV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
