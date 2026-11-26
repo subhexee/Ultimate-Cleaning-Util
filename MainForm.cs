@@ -535,6 +535,12 @@ public sealed class MainForm : Form
         AddCard("Caches", "Browser cache", "Clears cache files for Edge, Chrome and Firefox only. Cookies, passwords, history and open sessions are not touched. Close browsers first.", "LOW RISK", false, CleanupEngine.CleanBrowserCachesAsync);
         AddCard("Cleanup", "Delivery Optimization cache", "Clears Windows peer-to-peer update delivery cache using Microsoft's cleanup cmdlet. Windows can recreate it.", "LOW RISK", false, CleanupEngine.CleanDeliveryOptimizationCacheAsync);
         AddCard("Cleanup", "Old crash dumps", "Removes crash dump files older than 30 days. Keeps recent dumps that may help diagnose current problems.", "CAUTION", false, CleanupEngine.CleanOldCrashDumpsAsync);
+
+        AddCard("Cleanup", "Previous Windows installation scan", "Estimates the size of Windows.old and explains rollback implications. Read-only; does not remove anything.", "READ ONLY", false, CleanupEngine.AnalyzePreviousInstallationAsync);
+        AddCard("Windows Update", "Remove previous Windows installation", "Asks Windows Disk Cleanup to remove eligible previous-installation files. This can permanently remove the option to roll back to the previous Windows version.", "PERMANENT", false, CleanupEngine.CleanPreviousInstallationAsync);
+        AddCard("Cleanup", "Large files finder", "Finds files at least 512 MB in your user profile and temp folder. Exports a CSV report to Desktop; never deletes files.", "READ ONLY", false, CleanupEngine.ScanLargeFilesAsync);
+        AddCard("Cleanup", "Storage usage breakdown", "Measures top-level folders in your user profile and exports a size report. Read-only; may take several minutes on large profiles.", "READ ONLY", false, CleanupEngine.AnalyzeStorageUsageAsync);
+        AddCard("Cleanup", "Empty folders finder", "Finds empty folders in Desktop, Documents, Downloads, Pictures, Videos and Music. Exports a review-only report; nothing is deleted.", "READ ONLY", false, CleanupEngine.FindEmptyFoldersAsync);
         AddCard("Caches", "Explorer icon cache", "Removes rebuildable Windows Explorer icon cache databases. Icons are recreated automatically; Explorer may need a restart.", "LOW RISK", false, CleanupEngine.CleanExplorerIconCacheAsync);
         AddCard("Temporary files", "Old user temp files", "Removes only files in your user temp folder that have not been modified for at least 7 days. Newer and locked files are kept.", "LOW RISK", false, CleanupEngine.CleanOldUserTempFilesAsync);
 
