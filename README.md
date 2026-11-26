@@ -2,28 +2,60 @@
 
 **Made by EXE COMPUTERS**
 
-An original Windows maintenance utility by **SubhExe**.
+An original Windows maintenance and diagnostics utility by **SubhExe**.
 
-## Current foundation
-- Modern WinForms shell with dark/light theme toggle
-- Sidebar navigation and operation cards
-- Selectable operations and confirmation before execution
-- Persistent execution console, progress bar and cancellation
-- Safe temporary-folder cleanup that skips inaccessible files and avoids traversing reparse points
-- Thumbnail and Internet cache cleanup
-- DNS cache flush
-- DISM component cleanup and SFC scan
-- Windows Update cache intentionally marked as coming soon until service-state handling is implemented and tested
+## Tool catalogue
 
-## Safety choices
-This project intentionally does **not** clear Event Logs, delete Prefetch, delete Windows Installer PatchCache, or blindly delete Windows Update data. It does not silently empty the Recycle Bin or remove Windows.old.
+### Cleanup
+- User and Windows temporary files, including an age-filtered user-temp mode
+- Thumbnail, Explorer icon, DirectX shader, legacy Internet and supported browser caches
+- Windows Error Reporting queue/archive, aged crash dumps and Delivery Optimization cache
+- Recycle Bin cleanup (permanent; confirmation required)
+- Windows Update download-cache cleanup with service stop/restart handling
 
-Some actions (such as deleting cache files) cannot be undone. The UI asks for confirmation before execution. A future release should add a restore-point workflow and reversible settings snapshots before adding system tweaks.
+### Repair and maintenance
+- DISM component-store analysis, quick health check, deep scan, cleanup and RestoreHealth
+- SFC scan and read-only verification
+- Online CHKDSK scan, Optimize Drives for the system drive or all fixed local drives
+- SSD TRIM status and System Restore point creation
+
+### Diagnostics and reports
+- Disk health/SMART, volume capacity and free-space inventory
+- Battery and power-efficiency reports
+- Startup inventory, boot-performance events, process/memory usage and event-log analysis
+- Installed application and driver inventories, Windows activation status and MSInfo32 report
+- Network connectivity, adapter and IP configuration diagnostics
+- Windows Update history and common pending-reboot indicators
+
+### Security
+- Microsoft Defender quick scan, signature update and protection status
+- Windows Firewall profile status, BitLocker volume status and SmartScreen configuration inspection
+
+### Advanced tools
+- App uninstaller with post-uninstall leftover scan and review-before-delete
+- Duplicate file finder with hash-based matching and Recycle Bin removal
+- Reversible gaming profile with settings backup and restore
+- Windows debloat profiles with registry backup/restore and optional app removal
+- Startup Manager for common Run keys, Startup folders and logon/boot scheduled tasks; services and drivers are inventory-only
+- Windows USB media creator with Windows setup customizations and raw image writing
+
+## Safety model
+
+- Nothing is selected or executed automatically.
+- Read-only diagnostics are separated from actions that modify Windows.
+- Destructive actions require explicit confirmation in the UI.
+- Temporary-file cleanup skips inaccessible/locked files and avoids traversing reparse points.
+- Windows services, drivers, Defender, Windows Update, Store and core Xbox services are not indiscriminately disabled.
+- Gaming and debloat settings create backups where restoration is supported.
+- USB creation erases the selected USB drive; carefully verify the selected disk before proceeding.
+- Some operations require Administrator privileges. Long-running operations can take several minutes.
+
+This utility is not a guarantee of improved performance. Results depend on hardware, Windows version, drivers and workload. Some cleanup operations are irreversible, and restore points are not a substitute for a full backup. Test changes on a non-critical system before broad deployment.
 
 ## Requirements
 - Windows 10 or Windows 11
 - .NET 10 SDK to build
-- Administrator privileges (requested by application manifest)
+- Administrator privileges for elevated maintenance and repair operations
 
 ## Build locally
 ```powershell
@@ -35,7 +67,4 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 The EXE will be in `publish/`.
 
 ## GitHub Actions
-Push this project to GitHub. The included workflow builds a Windows x64 artifact when manually triggered or when a `v*` tag is pushed.
-
-## Important
-This is an initial development build, not a certified or fully tested release. Test in a Windows virtual machine before using it on a primary PC. Review the code before distributing it.
+Push to `main`, manually trigger the workflow, or push a `v*` tag to build a Windows x64 artifact.
