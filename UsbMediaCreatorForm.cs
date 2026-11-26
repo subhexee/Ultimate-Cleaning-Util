@@ -198,7 +198,20 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
     private static async Task<string> Capture(string file, IEnumerable<string> args)
     {
         using var p = new Process { StartInfo = new ProcessStartInfo { FileName = file, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
-        foreach (var a in args) p.StartInfo.ArgumentList.Add(a); p.Start(); var o = p.StandardOutput.ReadToEndAsync(); var e = p.StandardError.ReadToEndAsync(); await p.WaitForExitAsync(); string result = await o, error = await e; if (p.ExitCode != 0) throw new InvalidOperationException(file + " failed: " + error); return result;
+        foreach (var a in args) p.StartInfo.ArgumentList.Add(a);
+        p.Start();
+        var o = p.StandardOutput.ReadToEndAsync();
+        var e = p.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        try { await p.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException)
+        {
+            try { p.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException(file + " did not respond within 20 seconds. The operation was stopped; the USB creator should remain usable.");
+        }
+        string result = await o, error = await e;
+        if (p.ExitCode != 0) throw new InvalidOperationException(file + " failed: " + error);
+        return result;
     }
     private void Progress(int value, string status) { if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(new Action(() => Progress(value, status))); return; } _progress.Value = Math.Clamp(value, 0, 100); _status.Text = status; }
     private void Busy(bool b) { _busy = b; _disk.Enabled = _mode.Enabled = _browse.Enabled = _refresh.Enabled = _create.Enabled = !b; _scheme.Enabled = !b && _mode.SelectedIndex == 0; _verify.Enabled = !b && _mode.SelectedIndex == 1; }
