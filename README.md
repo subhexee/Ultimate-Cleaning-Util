@@ -11,6 +11,9 @@ An original Windows maintenance and diagnostics utility by **SubhExe**.
 - Thumbnail, Explorer icon, DirectX shader, legacy Internet and supported browser caches
 - Windows Error Reporting queue/archive, aged crash dumps and Delivery Optimization cache
 - Recycle Bin cleanup (permanent; confirmation required)
+- Previous Windows installation (Windows.old) size analysis and Windows-managed cleanup
+- Large-file finder (512 MB threshold) with CSV report; user-profile storage breakdown with CSV report
+- Empty-folder finder for common user folders (report only; no automatic deletion)
 - Windows Update download-cache cleanup with service stop/restart handling
 
 ### Repair and maintenance
