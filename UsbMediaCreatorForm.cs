@@ -234,8 +234,6 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
     private static string Fmt(long b) { string[] u = { "B", "KB", "MB", "GB", "TB" }; double n = b; int i = 0; while (n >= 1024 && i < u.Length - 1) { n /= 1024; i++; } return n.ToString("0.##") + " " + u[i]; }
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern SafeFileHandle OpenDevice(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
     private sealed record UsbDisk(int Number, string Name, string Serial, long Size, string Partition, string BusType = "USB", bool Boot = false, bool System = false, bool ReadOnly = false, bool Offline = false) { public override string ToString() => $"Disk {Number} — {Name} ({Fmt(Size)})"; }
-}
-
 
     private static bool IsAdministrator() =>
         new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
@@ -532,3 +530,4 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             };
         }
     }
+}
