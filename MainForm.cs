@@ -535,6 +535,8 @@ public sealed class MainForm : Form
         AddCard("Caches", "Browser cache", "Clears cache files for Edge, Chrome and Firefox only. Cookies, passwords, history and open sessions are not touched. Close browsers first.", "LOW RISK", false, CleanupEngine.CleanBrowserCachesAsync);
         AddCard("Cleanup", "Delivery Optimization cache", "Clears Windows peer-to-peer update delivery cache using Microsoft's cleanup cmdlet. Windows can recreate it.", "LOW RISK", false, CleanupEngine.CleanDeliveryOptimizationCacheAsync);
         AddCard("Cleanup", "Old crash dumps", "Removes crash dump files older than 30 days. Keeps recent dumps that may help diagnose current problems.", "CAUTION", false, CleanupEngine.CleanOldCrashDumpsAsync);
+        AddCard("Caches", "Explorer icon cache", "Removes rebuildable Windows Explorer icon cache databases. Icons are recreated automatically; Explorer may need a restart.", "LOW RISK", false, CleanupEngine.CleanExplorerIconCacheAsync);
+        AddCard("Temporary files", "Old user temp files", "Removes only files in your user temp folder that have not been modified for at least 7 days. Newer and locked files are kept.", "LOW RISK", false, CleanupEngine.CleanOldUserTempFilesAsync);
 
         // Read-only diagnostics and reports.
         AddCard("Diagnostics", "Disk health & SMART", "Reads Windows disk health, status and capacity information. SMART availability depends on the drive and controller.", "READ ONLY", false, CleanupEngine.CheckDiskHealthAsync);
@@ -546,13 +548,28 @@ public sealed class MainForm : Form
         AddCard("System Information", "Windows activation status", "Checks Windows licensing status and displays only the partial product key. Does not expose a full key.", "READ ONLY", false, CleanupEngine.CheckActivationAsync);
         AddCard("System Information", "System information report", "Creates a detailed MSInfo32 system report on your Desktop.", "REPORT", false, CleanupEngine.CreateSystemInfoReportAsync);
         AddCard("Network", "Network diagnostics", "Collects IP configuration and tests internet reachability and DNS resolution. Does not reset network settings.", "READ ONLY", false, CleanupEngine.RunNetworkDiagnosticsAsync);
+        AddCard("Diagnostics", "Energy efficiency report", "Runs Microsoft's powercfg energy analysis for 60 seconds and saves an HTML report to your Desktop. Useful for power and sleep issues.", "REPORT", false, CleanupEngine.CreateEnergyReportAsync);
+        AddCard("Diagnostics", "Boot performance analyzer", "Reads Windows Diagnostics-Performance boot events and reports recorded startup delays. Does not change startup settings.", "READ ONLY", false, CleanupEngine.AnalyzeBootPerformanceAsync);
+        AddCard("Diagnostics", "Process & memory analyzer", "Lists the highest-memory processes and reports installed/free physical memory. Read-only; no processes are terminated.", "READ ONLY", false, CleanupEngine.AnalyzeProcessesAsync);
+        AddCard("Diagnostics", "Network adapter analyzer", "Lists network adapters, link status, MAC addresses, IP configuration and gateway information.", "READ ONLY", false, CleanupEngine.AnalyzeNetworkAdaptersAsync);
+        AddCard("Diagnostics", "Windows Update analyzer", "Lists recent hotfixes and common pending-restart indicators. Does not install, remove or reset updates.", "READ ONLY", false, CleanupEngine.AnalyzeWindowsUpdatesAsync);
+        AddCard("Diagnostics", "Volumes & disk space report", "Reports local volumes, filesystems, health status, capacity and free space.", "READ ONLY", false, CleanupEngine.AnalyzeVolumesAsync);
 
         // Maintenance and security tasks.
         AddCard("Maintenance", "Optimize drives", "Runs Windows Optimize Drives with the /O option so Windows chooses the appropriate operation for SSDs or HDDs.", "MAINTENANCE", false, CleanupEngine.OptimizeSystemDriveAsync);
         AddCard("Maintenance", "SSD TRIM status", "Checks whether Windows has TRIM notifications enabled. This is a read-only status check.", "READ ONLY", false, CleanupEngine.CheckTrimStatusAsync);
+        AddCard("Maintenance", "Optimize all fixed drives", "Runs Windows Optimize Drives on every detected fixed local volume. Windows chooses TRIM or HDD optimization automatically.", "MAINTENANCE", false, CleanupEngine.OptimizeAllFixedDrivesAsync);
+        AddCard("Maintenance", "Filesystem online scan", "Runs CHKDSK /scan on the Windows system drive. It scans online and does not schedule a reboot-time repair.", "SCAN", false, CleanupEngine.ScanFilesystemAsync);
+        AddCard("Maintenance", "Verify system files", "Runs SFC /verifyonly to check protected Windows files without attempting repairs.", "DIAGNOSTIC", false, CleanupEngine.VerifySystemFilesAsync);
+        AddCard("Maintenance", "DISM component health check", "Performs a quick component-store corruption status check. Does not repair or modify the component store.", "DIAGNOSTIC", false, CleanupEngine.CheckComponentStoreHealthAsync);
+        AddCard("Maintenance", "DISM component deep scan", "Performs a deeper component-store corruption scan. This can take several minutes and does not repair automatically.", "DIAGNOSTIC", false, CleanupEngine.ScanComponentStoreHealthAsync);
         AddCard("Repair", "Create restore point", "Requests a Windows system restore point before major changes. Requires System Protection to be enabled; Windows may limit frequency.", "CAUTION", false, CleanupEngine.CreateRestorePointAsync);
         AddCard("Security", "Microsoft Defender quick scan", "Starts a Microsoft Defender quick scan. Availability depends on Defender being enabled and not managed by another antivirus.", "SECURITY", false, CleanupEngine.RunDefenderQuickScanAsync);
         AddCard("Security", "Update Defender signatures", "Requests the latest Microsoft Defender security intelligence updates.", "SECURITY", false, CleanupEngine.UpdateDefenderSignaturesAsync);
+        AddCard("Security", "Defender protection status", "Reports Microsoft Defender real-time protection, antivirus service and signature status. Read-only.", "READ ONLY", false, CleanupEngine.CheckDefenderStatusAsync);
+        AddCard("Security", "Windows Firewall status", "Reports firewall profile states and default inbound/outbound actions. Does not change firewall rules.", "READ ONLY", false, CleanupEngine.CheckFirewallStatusAsync);
+        AddCard("Security", "BitLocker encryption status", "Reports encryption and protection status for available volumes. Does not enable, disable or decrypt BitLocker.", "READ ONLY", false, CleanupEngine.CheckBitLockerStatusAsync);
+        AddCard("Security", "SmartScreen configuration", "Inspects common Windows SmartScreen registry and policy settings. This is not a complete security attestation.", "READ ONLY", false, CleanupEngine.CheckSmartScreenStatusAsync);
     }
 
     private void AddCard(string category, string title, string description, string risk, bool defaultSelected, Func<IProgress<string>, CancellationToken, Task>? action, bool disabled = false)
