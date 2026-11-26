@@ -893,6 +893,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
     private readonly Button _browse;
     private readonly Button _selectCandidates;
     private readonly Button _recycleCandidates;
+    private readonly Button _exportResults;
     private readonly List<DuplicateRecord> _allResults = new();
     private int _sortColumn = 1;
     private bool _sortDescending = true;
@@ -921,6 +922,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         Controls.Add(_results);
         _selectCandidates = AddButton("Select duplicate candidates", 20, 485, 210, SelectDuplicates);
         _recycleCandidates = AddButton("Recycle checked files", 240, 485, 190, RecycleChecked);
+        _exportResults = AddButton("Export CSV", 440, 485, 110, ExportResults);
         Resize += (_, _) => LayoutDuplicateFinder();
         Shown += (_, _) => LayoutDuplicateFinder();
         LayoutDuplicateFinder();
@@ -935,6 +937,7 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
         _results.Width = ClientSize.Width - 40;
         _selectCandidates.Top = LogBox.Top - _selectCandidates.Height - 10;
         _recycleCandidates.Top = _selectCandidates.Top;
+        _exportResults.Top = _selectCandidates.Top;
         _results.Height = Math.Max(120, _selectCandidates.Top - _results.Top - 12);
     }
 
@@ -1144,6 +1147,34 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
     private void SelectDuplicates()
     {
         foreach (ListViewItem row in _results.Items) row.Checked = true;
+    }
+
+    private void ExportResults()
+    {
+        if (_allResults.Count == 0) { MessageBox.Show(this, "Run a scan before exporting results."); return; }
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Export duplicate scan results",
+            Filter = "CSV files (*.csv)|*.csv",
+            FileName = $"DuplicateScan_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+            AddExtension = true,
+            DefaultExt = "csv"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            static string Csv(string value) => "\"" + (value ?? "").Replace("\"", "\"\"") + "\"";
+            var rows = new List<string> { "FilePath,SizeBytes,Group,Category" };
+            foreach (var item in _allResults.OrderBy(x => x.Group).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+                rows.Add(string.Join(",", Csv(item.Path), item.Size.ToString(System.Globalization.CultureInfo.InvariantCulture), item.Group.ToString(), Csv(Category(item.Path))));
+            File.WriteAllLines(dialog.FileName, rows, new System.Text.UTF8Encoding(true));
+            WriteLog($"Exported {_allResults.Count} duplicate candidates to {dialog.FileName}");
+        }
+        catch (Exception ex)
+        {
+            WriteLog("CSV export failed: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Export duplicate results", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void RecycleChecked()
