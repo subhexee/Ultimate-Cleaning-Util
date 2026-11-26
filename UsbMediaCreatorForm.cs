@@ -35,7 +35,10 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         Controls.Add(new Label { Text = "WARNING: The selected USB drive will be erased completely. Disconnect other external drives first.", Location = new Point(24, 305), Size = new Size(900, 20), ForeColor = Color.FromArgb(235, 166, 76), AutoEllipsis = true });
         _verify.Location = new Point(24, 335); _status.Location = new Point(24, 370); _progress.Location = new Point(24, 400);
         Resize += (_, _) => { int w = Math.Max(500, ClientSize.Width - 48); _disk.Width = _iso.Width = Math.Min(760, w); _progress.Width = Math.Min(900, w); };
-        Shown += (_, _) => RefreshDisks();
+        _info.Text = "Ready. Connect a USB drive, then click Refresh USB drives.";
+        _status.Text = "Ready — USB scanning starts only when requested.";
+        // Do not run storage enumeration during window startup. Let the form paint
+        // and remain responsive; the user can start discovery explicitly.
         WriteLog("Only USB-bus disks not marked as boot/system are listed. Disk identity is checked again before erasing.");
         UpdateMode();
     }
