@@ -1168,24 +1168,22 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
     private readonly CheckBox _gameMode = new() { Text = "Enable Windows Game Mode", Checked = true, AutoSize = true, Location = new Point(24, 112) };
     private readonly CheckBox _ultimate = new() { Text = "Activate Ultimate Performance power plan", Checked = true, AutoSize = true, Location = new Point(24, 148) };
     private readonly CheckBox _dvr = new() { Text = "Disable background Game DVR recording", Checked = true, AutoSize = true, Location = new Point(24, 184) };
-    private readonly CheckBox _hags = new() { Text = "Enable Hardware-Accelerated GPU Scheduling (HAGS)", AutoSize = true, Location = new Point(24, 220) };
-    private readonly CheckBox _mouse = new() { Text = "Disable mouse acceleration (1:1 pointer input)", AutoSize = true, Location = new Point(24, 256) };
-    private readonly CheckBox _gameBar = new() { Text = "Enable automatic Game Mode detection", Checked = true, AutoSize = true, Location = new Point(24, 292) };
+    private readonly CheckBox _mouse = new() { Text = "Disable mouse acceleration (1:1 pointer input)", AutoSize = true, Location = new Point(24, 220) };
+    private readonly CheckBox _gameBar = new() { Text = "Enable automatic Game Mode detection", Checked = true, AutoSize = true, Location = new Point(24, 256) };
     private readonly Label _info = new()
     {
-        Text = "HAGS requires compatible GPU hardware/drivers and a restart. Ultimate Performance can increase heat and power use, especially on laptops. Mouse acceleration changes Windows pointer behaviour. Review each option; a backup is saved before applying.",
-        Location = new Point(24, 336), Size = new Size(1040, 66), ForeColor = Color.FromArgb(151, 166, 185)
+        Text = "Ultimate Performance can increase heat and power use, especially on laptops. Mouse acceleration changes Windows pointer behaviour. Review each option; a backup is saved before applying.",
+        Location = new Point(24, 300), Size = new Size(1040, 66), ForeColor = Color.FromArgb(151, 166, 185)
     };
     private readonly string _backup = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ultimate Cleaning Utility", "gaming-settings-backup.json");
     private bool _busy;
 
     public GamingOptimizationForm() : base("Gaming Optimization", "Expanded, reversible Windows gaming profile. Hardware-dependent options are optional; no unsafe timer, HPET, service, Defender, update, or driver hacks.")
     {
-        Controls.AddRange(new Control[] { _gameMode, _ultimate, _dvr, _hags, _mouse, _gameBar, _info });
+        Controls.AddRange(new Control[] { _gameMode, _ultimate, _dvr, _mouse, _gameBar, _info });
         AddButton("Apply selected optimizations", 24, 425, 220, Apply);
         AddButton("Restore previous settings", 254, 425, 200, Restore);
         WriteLog("Safe gaming options loaded. Nothing is changed until Apply is clicked.");
-        WriteLog("HAGS is hardware-dependent; if performance worsens, uncheck it and apply or restore your backup.");
     }
 
     private async void Apply()
@@ -1228,12 +1226,6 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
                 SetValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "HistoricalCaptureEnabled", 0);
                 WriteLog("Background Game DVR recording disabled. Game Bar is not uninstalled.");
             }
-            if (_hags.Checked)
-            {
-                // Windows GraphicsDrivers HwSchMode: 2 requests HAGS enabled; hardware/driver support is required.
-                SetValue(@"Software\Microsoft\Windows\CurrentVersion\GraphicsDrivers", "HwSchMode", 2);
-                WriteLog("HAGS enable request written. Windows may ignore it on unsupported hardware; restart required.");
-            }
             if (_mouse.Checked)
             {
                 SetStringValue(@"Control Panel\Mouse", "MouseSpeed", "0");
@@ -1256,8 +1248,8 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
                 await RunCommand("powercfg.exe", "/setactive", guid);
                 WriteLog("Ultimate Performance power plan activated. Monitor temperatures and power use.");
             }
-            WriteLog("Gaming optimizations applied. Restart Windows for HAGS and other pending graphics changes.");
-            MessageBox.Show(this, "Gaming profile applied.\\n\\nA restart is recommended, especially for HAGS. Performance varies by hardware and game. If anything behaves worse, use Restore previous settings.", "Gaming optimization complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            WriteLog("Gaming optimizations applied. Sign out or restart if a setting does not take effect immediately.");
+            MessageBox.Show(this, "Gaming profile applied. Performance varies by hardware and game. If anything behaves worse, use Restore previous settings.", "Gaming optimization complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
@@ -1278,8 +1270,8 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
             foreach (var value in data.Values) RestoreValue(value);
             var match = System.Text.RegularExpressions.Regex.Match(data.ActivePlan, @"([a-fA-F0-9-]{36})");
             if (match.Success) await RunCommand("powercfg.exe", "/setactive", match.Groups[1].Value);
-            WriteLog("Previous registry settings and active power plan restored. Restart Windows if HAGS was changed.");
-            MessageBox.Show(this, "Previous gaming settings and power plan restored. Restart Windows if HAGS was changed.", "Restore complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            WriteLog("Previous registry settings and active power plan restored.");
+            MessageBox.Show(this, "Previous gaming settings and power plan restored.", "Restore complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) { WriteLog("Restore failed: " + ex); MessageBox.Show(this, ex.Message, "Restore settings", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { _busy = false; }
