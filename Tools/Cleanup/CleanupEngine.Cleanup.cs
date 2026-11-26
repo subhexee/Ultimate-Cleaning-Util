@@ -129,4 +129,61 @@ internal static partial class CleanupEngine
             }
             progress.Report("Old crash dump cleanup finished. Dumps from the last 30 days were retained.");
         }, token);
+
+    public static Task CleanExplorerIconCacheAsync(IProgress<string> progress, CancellationToken token)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Explorer");
+        return Task.Run(() =>
+        {
+            if (!Directory.Exists(path)) { progress.Report("Explorer cache folder was not found."); return; }
+            var files = Directory.GetFiles(path, "iconcache*.db", SearchOption.TopDirectoryOnly)
+                .Concat(Directory.GetFiles(path, "iconcache*.db-wal", SearchOption.TopDirectoryOnly))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            foreach (var file in files)
+            {
+                token.ThrowIfCancellationRequested();
+                TryDeleteFile(file, progress);
+            }
+            progress.Report("Icon cache cleanup finished. Windows Explorer will rebuild icons as needed; a sign-out or Explorer restart may be needed.");
+        }, token);
+    }
+
+    public static Task CleanOldUserTempFilesAsync(IProgress<string> progress, CancellationToken token)
+    {
+        var root = Path.GetTempPath();
+        var cutoff = DateTime.Now.AddDays(-7);
+        return Task.Run(() =>
+        {
+            if (!Directory.Exists(root)) { progress.Report("User temporary folder was not found."); return; }
+            progress.Report($"Removing only temporary files older than 7 days from {root}.");
+            CleanOldFilesRecursive(root, cutoff, progress, token);
+            progress.Report("Old temporary file cleanup finished. Newer files and locked files were retained.");
+        }, token);
+    }
+
+    private static void CleanOldFilesRecursive(string root, DateTime cutoff, IProgress<string> progress, CancellationToken token)
+    {
+        string[] files;
+        string[] dirs;
+        try { files = Directory.GetFiles(root, "*", SearchOption.TopDirectoryOnly); dirs = Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly); }
+        catch (Exception ex) { progress.Report($"Skipped inaccessible folder {root}: {ex.Message}"); return; }
+        foreach (var file in files)
+        {
+            token.ThrowIfCancellationRequested();
+            try { if (File.GetLastWriteTime(file) < cutoff) TryDeleteFile(file, progress); }
+            catch (Exception ex) { progress.Report($"Skipped {Path.GetFileName(file)}: {ex.Message}"); }
+        }
+        foreach (var dir in dirs)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var info = new DirectoryInfo(dir);
+                if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                CleanOldFilesRecursive(dir, cutoff, progress, token);
+            }
+            catch (Exception ex) { progress.Report($"Skipped folder {Path.GetFileName(dir)}: {ex.Message}"); }
+        }
+    }
+
 }
