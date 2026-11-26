@@ -393,15 +393,26 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         }
         try {
           Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive' 'DisableFileSyncNGSC' 1
+          Set-Dword 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' 'HiberbootEnabled' 0
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Device Metadata' 'PreventDeviceMetadataFromNetwork' 1
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' 'DisableCloudOptimizedContent' 1
+          Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Communications' 'ConfigureChatAutoInstall' 0
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh' 'AllowNewsAndInterests' 0
           Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' 'DisableWindowsConsumerFeatures' 1
           Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds' 'EnableFeeds' 0
           Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' 'HideFirstRunExperience' 1
           Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot' 'TurnOffWindowsCopilot' 1
           $provisioned = Get-AppxProvisionedPackage -Online
-          foreach ($pattern in @('Microsoft.OutlookForWindows','Microsoft.Copilot')) {
+          foreach ($pattern in @('Microsoft.OutlookForWindows','Microsoft.Copilot','MSTeams')) {
             $provisioned | Where-Object { $_.DisplayName -eq $pattern } | ForEach-Object {
               Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction Continue | Out-Null
             }
+          }
+          foreach ($pattern in @('*Outlook*','*Teams*')) {
+            Get-AppxPackage -AllUsers $pattern | Remove-AppxPackage -AllUsers -ErrorAction Continue
+          }
+          foreach ($setup in @((Join-Path $env:SystemRoot 'System32\OneDriveSetup.exe'),(Join-Path $env:SystemRoot 'SysWOW64\OneDriveSetup.exe'))) {
+            if (Test-Path $setup) { Start-Process -FilePath $setup -ArgumentList '/uninstall' -Wait -WindowStyle Hidden; break }
           }
           $defaultHive = Join-Path $env:SystemDrive 'Users\Default\NTUSER.DAT'
           if (Test-Path $defaultHive) {
@@ -477,14 +488,20 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             BackColor = SystemColors.Control;
             Controls.Add(new Label { Text = "Customize Windows installation", Font = new Font("Segoe UI", 15, FontStyle.Bold), Location = new Point(24, 20), AutoSize = true });
             Controls.Add(new Label { Text = "Choose optional setup bypasses and first-run preferences. Nothing is selected automatically.", Location = new Point(24, 58), Size = new Size(640, 38), ForeColor = SystemColors.GrayText });
-            int y = 108;
-            foreach (var cb in new[] { _hardware, _online, _local, _regional, _privacy, _bitlocker, _qol, _sku })
-            { cb.Location = new Point(28, y); Controls.Add(cb); y += 43; }
-            var usernameLabel = new Label { Text = "Local account username:", Location = new Point(52, 240), AutoSize = true };
-            _username.Location = new Point(230, 236);
+            _hardware.Location = new Point(28, 108);
+            _online.Location = new Point(28, 149);
+            _local.Location = new Point(28, 190);
+            var usernameLabel = new Label { Text = "Local account username:", Location = new Point(52, 222), AutoSize = true };
+            _username.Location = new Point(230, 218);
+            _regional.Location = new Point(28, 258);
+            _privacy.Location = new Point(28, 299);
+            _bitlocker.Location = new Point(28, 340);
+            _qol.Location = new Point(28, 381);
+            _sku.Location = new Point(28, 422);
+            Controls.AddRange(new Control[] { _hardware, _online, _local, _regional, _privacy, _bitlocker, _qol, _sku });
             _local.CheckedChanged += (_, _) => _username.Enabled = _local.Checked;
             _username.Enabled = false;
-            var note = new Label { Text = "Hardware bypass modifies boot.wim and needs Administrator. QoL actions run once after setup. BitLocker protection is recommended for portable devices.", Location = new Point(28, 460), Size = new Size(630, 58), ForeColor = Color.DarkGoldenrod };
+            var note = new Label { Text = "Hardware bypass modifies boot.wim and needs Administrator. QoL actions run during setup. BitLocker protection is recommended for portable devices. Silent auto-install is intentionally omitted because it can erase the wrong internal disk.", Location = new Point(28, 465), Size = new Size(630, 58), ForeColor = Color.DarkGoldenrod };
             var ok = new Button { Text = "Continue", DialogResult = DialogResult.OK, Location = new Point(430, 530), Size = new Size(105, 34) };
             var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(548, 530), Size = new Size(105, 34) };
             Controls.AddRange(new Control[] { usernameLabel, _username, note, ok, cancel });
