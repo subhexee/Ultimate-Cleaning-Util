@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Globalization;
+using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
 
 namespace UltimateCleaningUtility;
@@ -258,17 +259,21 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         string user = System.Security.SecurityElement.Escape(o.Username) ?? "User";
         string culture = CultureInfo.CurrentCulture.Name;
         if (string.IsNullOrWhiteSpace(culture)) culture = "en-US";
+        string inputLocale = "0409:00000409";
+        try
+        {
+            using var keyboard = Registry.CurrentUser.OpenSubKey(@"Keyboard Layout\Preload");
+            inputLocale = Convert.ToString(keyboard?.GetValue("1")) ?? inputLocale;
+        }
+        catch { }
+        string timezone = System.Security.SecurityElement.Escape(TimeZoneInfo.Local.Id) ?? "UTC";
         string bitlocker = o.DisableBitLocker
             ? """
-              <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-                <RunSynchronous>
-                  <RunSynchronousCommand wcm:action="add">
-                    <Order>1</Order>
-                    <Description>Prevent automatic device encryption</Description>
-                    <Path>reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\BitLocker" /v PreventDeviceEncryption /t REG_DWORD /d 1 /f</Path>
-                    <WillReboot>Never</WillReboot>
-                  </RunSynchronousCommand>
-                </RunSynchronous>
+              <component name="Microsoft-Windows-SecureStartup-FilterDriver" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <PreventDeviceEncryption>true</PreventDeviceEncryption>
+              </component>
+              <component name="Microsoft-Windows-EnhancedStorage-Adm" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <TCGSecurityActivationDisabled>1</TCGSecurityActivationDisabled>
               </component>
               """
             : "";
@@ -276,25 +281,51 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         string privacy = o.SkipPrivacyQuestions ? "<ProtectYourPC>3</ProtectYourPC>" : "";
         string local = o.CreateLocalAccount
             ? $"""
-              <UserAccounts>
-                <LocalAccounts>
-                  <LocalAccount wcm:action="add">
-                    <Name>{user}</Name><Group>Administrators</Group><DisplayName>{user}</DisplayName>
-                    <Description>Local account created by EXE USB Creator</Description>
-                    <Password><Value></Value><PlainText>true</PlainText></Password>
-                  </LocalAccount>
-                </LocalAccounts>
-              </UserAccounts>
+              <UserAccounts><LocalAccounts><LocalAccount wcm:action="add">
+                <Name>{user}</Name><DisplayName>{user}</DisplayName><Group>Administrators</Group>
+                <Password><Value>UABhAHMAcwB3AG8AcgBkAA==</Value><PlainText>false</PlainText></Password>
+              </LocalAccount></LocalAccounts></UserAccounts>
               """
             : "";
         string regional = o.CopyRegionalSettings
             ? $"""
               <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-                <InputLocale>0409:00000409</InputLocale><SystemLocale>{culture}</SystemLocale>
+                <InputLocale>{inputLocale}</InputLocale><SystemLocale>{culture}</SystemLocale>
                 <UILanguage>{culture}</UILanguage><UserLocale>{culture}</UserLocale>
               </component>
               """
             : "";
+        var commands = new List<(string Description, string Command)>();
+        if (o.CreateLocalAccount)
+        {
+            commands.Add(("Require the new local account to change its temporary password", "net user \"" + o.Username + "\" /logonpasswordchg:yes"));
+            commands.Add(("Prevent temporary password expiry", "net accounts /maxpwage:unlimited"));
+        }
+        if (o.QualityOfLife)
+        {
+            commands.Add(("Disable Fast Startup", "reg add \"HKLM\\System\\CurrentControlSet\\Control\\Session Manager\\Power\" /v HiberbootEnabled /t REG_DWORD /d 0 /f"));
+            commands.Add(("Hide Copilot button", "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" /v ShowCopilotButton /t REG_DWORD /d 0 /f"));
+            commands.Add(("Disable Windows Copilot policy", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Windows\\WindowsCopilot\" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f"));
+            commands.Add(("Use compact taskbar search icon", "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search\" /v SearchboxTaskbarMode /t REG_DWORD /d 1 /f"));
+            commands.Add(("Disable consumer suggestions", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Windows\\CloudContent\" /v DisableWindowsConsumerFeatures /t REG_DWORD /d 1 /f"));
+            commands.Add(("Disable Start menu suggestions", "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager\" /v SystemPaneSuggestionsEnabled /t REG_DWORD /d 0 /f"));
+            commands.Add(("Disable Bing search integration", "reg add \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search\" /v BingSearchEnabled /t REG_DWORD /d 0 /f"));
+            commands.Add(("Disable automatic device metadata downloads", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Windows\\Device Metadata\" /v PreventDeviceMetadataFromNetwork /t REG_DWORD /d 1 /f"));
+            commands.Add(("Disable News and Interests", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Dsh\" /v AllowNewsAndInterests /t REG_DWORD /d 0 /f"));
+            commands.Add(("Disable Windows Feeds", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Windows\\Windows Feeds\" /v EnableFeeds /t REG_DWORD /d 0 /f"));
+            commands.Add(("Disable Teams auto-install", "reg add \"HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Communications\" /v ConfigureChatAutoInstall /t REG_DWORD /d 0 /f"));
+            commands.Add(("Prevent Outlook taskbar promotion", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Windows\\CloudContent\" /v DisableCloudOptimizedContent /t REG_DWORD /d 1 /f"));
+            commands.Add(("Skip Microsoft Edge first-run screen", "reg add \"HKLM\\Software\\Policies\\Microsoft\\Edge\" /v HideFirstRunExperience /t REG_DWORD /d 1 /f"));
+            commands.Add(("Use expanded Start menu pin layout", "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" /v Start_Layout /t REG_DWORD /d 1 /f"));
+            commands.Add(("Restore classic right-click context menu", "reg add \"HKCU\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32\" /ve /t REG_SZ /d \"\" /f"));
+        }
+        if (o.ApplySkuSiPolicy)
+            commands.Add(("Copy installed Windows Secure Boot policy to EFI system partition", "cmd /c mountvol S: /S && copy %WINDIR%\\system32\\SecureBootUpdates\\SkuSiPolicy.p7b S:\\EFI\\Microsoft\\Boot && mountvol S: /D"));
+        string firstLogon = commands.Count == 0 ? "" : "<FirstLogonCommands>" +
+            string.Join("", commands.Select((x, i) => "<SynchronousCommand wcm:action=\"add\"><Order>" + (i + 1) +
+                "</Order><Description>" + System.Security.SecurityElement.Escape(x.Description) + "</Description><CommandLine>" +
+                System.Security.SecurityElement.Escape(x.Command) + "</CommandLine></SynchronousCommand>")) +
+            "</FirstLogonCommands>";
         return $"""
         <?xml version="1.0" encoding="utf-8"?>
         <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
@@ -303,20 +334,19 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
               <UserData><AcceptEula>true</AcceptEula><ProductKey><Key></Key></ProductKey></UserData>
             </component>
           </settings>
-          <settings pass="specialize">
-            {bitlocker}
-          </settings>
           <settings pass="oobeSystem">
             {regional}
             <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+              <TimeZone>{timezone}</TimeZone>
               <OOBE><HideEULAPage>true</HideEULAPage>{online}{privacy}</OOBE>
               {local}
+              {firstLogon}
             </component>
+            {bitlocker}
           </settings>
         </unattend>
         """;
     }
-
     private async Task InjectHardwareBypassAsync(string bootWim)
     {
         if (!File.Exists(bootWim))
@@ -352,7 +382,7 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
 
     private async Task InstallQualityOfLifeScriptAsync(string usbRoot)
     {
-        string scripts = Path.Combine(usbRoot, "$OEM$", "$$", "Setup", "Scripts");
+        string scripts = Path.Combine(usbRoot, "sources", "$OEM$", "$", "Setup", "Scripts");
         Directory.CreateDirectory(scripts);
         string ps = """
         $ErrorActionPreference = 'Continue'
@@ -420,7 +450,8 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         public bool SkipPrivacyQuestions { get; set; }
         public bool DisableBitLocker { get; set; }
         public bool QualityOfLife { get; set; }
-        public bool HasAny => BypassHardware || BypassOnlineAccount || CreateLocalAccount || CopyRegionalSettings || SkipPrivacyQuestions || DisableBitLocker;
+        public bool ApplySkuSiPolicy { get; set; }
+        public bool HasAny => BypassHardware || BypassOnlineAccount || CreateLocalAccount || CopyRegionalSettings || SkipPrivacyQuestions || DisableBitLocker || QualityOfLife || ApplySkuSiPolicy;
     }
 
     private sealed class WindowsSetupOptionsForm : Form
@@ -433,6 +464,7 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         private readonly CheckBox _privacy = new() { Text = "Disable data collection questions (privacy prompts)", AutoSize = true };
         private readonly CheckBox _bitlocker = new() { Text = "Disable automatic BitLocker device encryption", AutoSize = true };
         private readonly CheckBox _qol = new() { Text = "Apply Rufus-style Quality of Life improvements", AutoSize = true };
+        private readonly CheckBox _sku = new() { Text = "Copy installed Windows Secure Boot policy to EFI partition (SkuSiPolicy)", AutoSize = true };
         public WindowsSetupOptions Options { get; private set; } = new();
 
         public WindowsSetupOptionsForm()
@@ -441,20 +473,20 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
-            ClientSize = new Size(690, 570);
+            ClientSize = new Size(690, 590);
             BackColor = SystemColors.Control;
             Controls.Add(new Label { Text = "Customize Windows installation", Font = new Font("Segoe UI", 15, FontStyle.Bold), Location = new Point(24, 20), AutoSize = true });
             Controls.Add(new Label { Text = "Choose optional setup bypasses and first-run preferences. Nothing is selected automatically.", Location = new Point(24, 58), Size = new Size(640, 38), ForeColor = SystemColors.GrayText });
-            int y = 112;
-            foreach (var cb in new[] { _hardware, _online, _local, _regional, _privacy, _bitlocker, _qol })
+            int y = 108;
+            foreach (var cb in new[] { _hardware, _online, _local, _regional, _privacy, _bitlocker, _qol, _sku })
             { cb.Location = new Point(28, y); Controls.Add(cb); y += 43; }
             var usernameLabel = new Label { Text = "Local account username:", Location = new Point(52, 240), AutoSize = true };
             _username.Location = new Point(230, 236);
             _local.CheckedChanged += (_, _) => _username.Enabled = _local.Checked;
             _username.Enabled = false;
-            var note = new Label { Text = "Hardware bypass modifies boot.wim and needs Administrator. QoL actions run once after setup. BitLocker protection is recommended for portable devices.", Location = new Point(28, 430), Size = new Size(630, 64), ForeColor = Color.DarkGoldenrod };
-            var ok = new Button { Text = "Continue", DialogResult = DialogResult.OK, Location = new Point(430, 510), Size = new Size(105, 34) };
-            var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(548, 510), Size = new Size(105, 34) };
+            var note = new Label { Text = "Hardware bypass modifies boot.wim and needs Administrator. QoL actions run once after setup. BitLocker protection is recommended for portable devices.", Location = new Point(28, 460), Size = new Size(630, 58), ForeColor = Color.DarkGoldenrod };
+            var ok = new Button { Text = "Continue", DialogResult = DialogResult.OK, Location = new Point(430, 530), Size = new Size(105, 34) };
+            var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(548, 530), Size = new Size(105, 34) };
             Controls.AddRange(new Control[] { usernameLabel, _username, note, ok, cancel });
             AcceptButton = ok; CancelButton = cancel;
             FormClosing += (_, e) =>
@@ -465,7 +497,7 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
                     MessageBox.Show(this, "Enter a local username of 1–20 letters, numbers, hyphens or underscores.", "Invalid username", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     e.Cancel = true; DialogResult = DialogResult.None; return;
                 }
-                Options = new WindowsSetupOptions { BypassHardware = _hardware.Checked, BypassOnlineAccount = _online.Checked, CreateLocalAccount = _local.Checked, Username = _username.Text.Trim(), CopyRegionalSettings = _regional.Checked, SkipPrivacyQuestions = _privacy.Checked, DisableBitLocker = _bitlocker.Checked, QualityOfLife = _qol.Checked };
+                Options = new WindowsSetupOptions { BypassHardware = _hardware.Checked, BypassOnlineAccount = _online.Checked, CreateLocalAccount = _local.Checked, Username = _username.Text.Trim(), CopyRegionalSettings = _regional.Checked, SkipPrivacyQuestions = _privacy.Checked, DisableBitLocker = _bitlocker.Checked, QualityOfLife = _qol.Checked, ApplySkuSiPolicy = _sku.Checked };
             };
         }
     }
