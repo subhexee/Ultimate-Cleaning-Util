@@ -186,4 +186,144 @@ internal static partial class CleanupEngine
         }
     }
 
+
+    public static Task AnalyzePreviousInstallationAsync(IProgress<string> progress, CancellationToken token) => Task.Run(() =>
+    {
+        var windowsOld = Path.Combine(Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? "C:\\\\", "Windows.old");
+        if (!Directory.Exists(windowsOld)) { progress.Report("Windows.old was not found. There is no previous Windows installation folder to review."); return; }
+        long bytes = GetDirectorySizeSafe(windowsOld, progress, token);
+        progress.Report($"Previous Windows installation found: {windowsOld}");
+        progress.Report($"Estimated size: {FormatBytes(bytes)}");
+        progress.Report("Review this folder before removal. It may contain files needed to roll back to the previous Windows version.");
+    }, token);
+
+    public static Task CleanPreviousInstallationAsync(IProgress<string> progress, CancellationToken token)
+    {
+        progress.Report("Launching Windows Disk Cleanup automatic previous-installation cleanup.");
+        progress.Report("Windows decides whether old installation files are eligible. Rollback may no longer be possible afterward.");
+        return RunProcessAsync("cleanmgr.exe", new[] { "/autoclean" }, progress, token);
+    }
+
+    public static Task ScanLargeFilesAsync(IProgress<string> progress, CancellationToken token) => Task.Run(() =>
+    {
+        var roots = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp")
+        }.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var found = new List<(string Path, long Size, DateTime Modified)>();
+        foreach (var root in roots)
+        {
+            progress.Report("Scanning for large files under " + root);
+            CollectLargeFiles(root, found, progress, token, 512L * 1024 * 1024);
+        }
+        var ordered = found.OrderByDescending(x => x.Size).Take(150).ToList();
+        var report = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "EXE-Large-Files-Report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".csv");
+        var csv = new List<string> { "SizeBytes,LastModified,FilePath" };
+        csv.AddRange(ordered.Select(x => $"{x.Size},{x.Modified.ToString("yyyy-MM-dd HH:mm:ss")},\"{x.Path.Replace("\"", "\"\"")}\""));
+        File.WriteAllLines(report, csv, System.Text.Encoding.UTF8);
+        progress.Report($"Found {found.Count} file(s) at least 512 MB. Top {ordered.Count} saved to: {report}");
+        progress.Report("This is a review-only report. No files were deleted or moved.");
+    }, token);
+
+    public static Task AnalyzeStorageUsageAsync(IProgress<string> progress, CancellationToken token) => Task.Run(() =>
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!Directory.Exists(profile)) { progress.Report("User profile folder not found."); return; }
+        var rows = new List<(string Folder, long Bytes)>();
+        foreach (var folder in Directory.GetDirectories(profile, "*", SearchOption.TopDirectoryOnly))
+        {
+            token.ThrowIfCancellationRequested();
+            var info = new DirectoryInfo(folder);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            progress.Report("Measuring " + info.Name);
+            rows.Add((folder, GetDirectorySizeSafe(folder, progress, token)));
+        }
+        var report = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "EXE-Storage-Breakdown-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".csv");
+        File.WriteAllLines(report, new[] { "Folder,SizeBytes" }.Concat(rows.OrderByDescending(x => x.Bytes).Select(x => $"\"{x.Folder.Replace("\"", "\"\"")}\",{x.Bytes}")), System.Text.Encoding.UTF8);
+        foreach (var row in rows.OrderByDescending(x => x.Bytes).Take(12)) progress.Report($"{Path.GetFileName(row.Folder)} — {FormatBytes(row.Bytes)}");
+        progress.Report("Storage breakdown report saved to: " + report);
+        progress.Report("Read-only scan: no files were changed.");
+    }, token);
+
+    public static Task FindEmptyFoldersAsync(IProgress<string> progress, CancellationToken token) => Task.Run(() =>
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var roots = new[] { "Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music" }
+            .Select(name => Path.Combine(profile, name)).Where(Directory.Exists).ToArray();
+        var empty = new List<string>();
+        foreach (var root in roots) CollectEmptyFolders(root, empty, progress, token);
+        var report = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "EXE-Empty-Folders-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt");
+        File.WriteAllLines(report, empty);
+        progress.Report($"Found {empty.Count} empty folder(s) in common user folders. Report: {report}");
+        progress.Report("Nothing was deleted. Review each folder manually before removing it.");
+    }, token);
+
+    private static void CollectLargeFiles(string root, List<(string Path, long Size, DateTime Modified)> found, IProgress<string> progress, CancellationToken token, long minimum)
+    {
+        token.ThrowIfCancellationRequested();
+        string[] files; string[] dirs;
+        try { files = Directory.GetFiles(root); dirs = Directory.GetDirectories(root); }
+        catch (Exception ex) { progress.Report("Skipped inaccessible folder: " + root + " — " + ex.Message); return; }
+        foreach (var file in files)
+        {
+            token.ThrowIfCancellationRequested();
+            try { var info = new FileInfo(file); if (info.Length >= minimum) found.Add((file, info.Length, info.LastWriteTime)); }
+            catch { }
+        }
+        foreach (var dir in dirs)
+        {
+            token.ThrowIfCancellationRequested();
+            try { if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) == 0) CollectLargeFiles(dir, found, progress, token, minimum); }
+            catch { }
+        }
+    }
+
+    private static void CollectEmptyFolders(string root, List<string> empty, IProgress<string> progress, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(root); }
+        catch (Exception ex) { progress.Report("Skipped inaccessible folder: " + root + " — " + ex.Message); return; }
+        foreach (var dir in dirs)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0) continue;
+                CollectEmptyFolders(dir, empty, progress, token);
+                if (!Directory.EnumerateFileSystemEntries(dir).Any()) empty.Add(dir);
+            }
+            catch { }
+        }
+    }
+
+    private static long GetDirectorySizeSafe(string root, IProgress<string> progress, CancellationToken token)
+    {
+        long total = 0;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly))
+            {
+                token.ThrowIfCancellationRequested();
+                try { total += new FileInfo(file).Length; } catch { }
+            }
+            foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
+            {
+                token.ThrowIfCancellationRequested();
+                try { if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) == 0) total += GetDirectorySizeSafe(dir, progress, token); } catch { }
+            }
+        }
+        catch (Exception ex) { progress.Report("Partial size estimate; skipped " + root + " — " + ex.Message); }
+        return total;
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double value = bytes; int unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return value.ToString("0.##") + " " + units[unit];
+    }
+
 }
