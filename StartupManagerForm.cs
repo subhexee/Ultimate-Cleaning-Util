@@ -213,6 +213,7 @@ internal sealed class StartupManagerForm : Form
     private void ApplyGridFilters()
     {
         if (_grid.Rows.Count == 0) return;
+        if (_grid.CurrentCell != null) _grid.CurrentCell = null;
         var query = _search.Text.Trim();
         var type = _typeFilter.SelectedItem?.ToString() ?? "All entry types";
         var state = _stateFilter.SelectedItem?.ToString() ?? "All states";
@@ -226,7 +227,7 @@ internal sealed class StartupManagerForm : Form
             {
                 "Registry" => entry.Type.Contains("Registry", StringComparison.OrdinalIgnoreCase),
                 "Startup folder" => entry.Type.Contains("Startup folder", StringComparison.OrdinalIgnoreCase),
-                "Scheduled task" => entry.Type.Contains("Scheduled task", StringComparison.OrdinalIgnoreCase),
+                "Scheduled task" => entry.Type.Contains("task", StringComparison.OrdinalIgnoreCase),
                 "Service" => entry.Type.Contains("service", StringComparison.OrdinalIgnoreCase),
                 "Driver" => entry.Type.Contains("driver", StringComparison.OrdinalIgnoreCase),
                 "Read-only / info" => entry.ReadOnly,
