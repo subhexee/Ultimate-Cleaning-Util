@@ -46,8 +46,10 @@ internal static class AdvancedToolForms
     {
         try
         {
-            using var form = new UsbMediaCreatorForm();
-            form.ShowDialog(owner);
+            // Keep the main utility interactive while the USB creator is open.
+            // The creator owns its own lifetime and is disposed when the user closes it.
+            var form = new UsbMediaCreatorForm();
+            form.Show(owner);
         }
         catch (Exception ex)
         {
