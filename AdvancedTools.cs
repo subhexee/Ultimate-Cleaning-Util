@@ -1166,39 +1166,80 @@ internal sealed class DuplicateFinderForm : AdvancedToolForm
 internal sealed class GamingOptimizationForm : AdvancedToolForm
 {
     private readonly CheckBox _gameMode = new() { Text = "Enable Windows Game Mode", Checked = true, AutoSize = true, Location = new Point(24, 112) };
-    private readonly CheckBox _ultimate = new() { Text = "Create / activate Ultimate Performance power plan", Checked = true, AutoSize = true, Location = new Point(24, 150) };
-    private readonly CheckBox _dvr = new() { Text = "Disable background Game DVR recording", Checked = true, AutoSize = true, Location = new Point(24, 188) };
-    private readonly string _backup = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ultimate Cleaning Utility", "gaming-settings-backup.json");
-    public GamingOptimizationForm() : base("Gaming Optimization", "Windows-level gaming profile. No overclocking, timer tweaks, or disabling essential services.")
+    private readonly CheckBox _ultimate = new() { Text = "Activate Ultimate Performance power plan", Checked = true, AutoSize = true, Location = new Point(24, 148) };
+    private readonly CheckBox _dvr = new() { Text = "Disable background Game DVR recording", Checked = true, AutoSize = true, Location = new Point(24, 184) };
+    private readonly CheckBox _hags = new() { Text = "Enable Hardware-Accelerated GPU Scheduling (HAGS)", AutoSize = true, Location = new Point(24, 220) };
+    private readonly CheckBox _mouse = new() { Text = "Disable mouse acceleration (1:1 pointer input)", AutoSize = true, Location = new Point(24, 256) };
+    private readonly CheckBox _gameBar = new() { Text = "Enable automatic Game Mode detection", Checked = true, AutoSize = true, Location = new Point(24, 292) };
+    private readonly Label _info = new()
     {
-        Controls.AddRange(new Control[] { _gameMode, _ultimate, _dvr });
-        Controls.Add(new Label { Text = "The current power plan and affected per-user registry values are backed up before changes. Ultimate Performance may increase power use and temperatures.", Location = new Point(24, 235), Size = new Size(850, 58), ForeColor = Color.FromArgb(151, 166, 185) });
-        AddButton("Apply gaming profile", 24, 320, 190, Apply);
-        AddButton("Restore previous settings", 224, 320, 190, Restore);
-        WriteLog("Recommended defaults are selected. Review before applying.");
+        Text = "HAGS requires compatible GPU hardware/drivers and a restart. Ultimate Performance can increase heat and power use, especially on laptops. Mouse acceleration changes Windows pointer behaviour. Review each option; a backup is saved before applying.",
+        Location = new Point(24, 336), Size = new Size(1040, 66), ForeColor = Color.FromArgb(151, 166, 185)
+    };
+    private readonly string _backup = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ultimate Cleaning Utility", "gaming-settings-backup.json");
+    private bool _busy;
+
+    public GamingOptimizationForm() : base("Gaming Optimization", "Expanded, reversible Windows gaming profile. Hardware-dependent options are optional; no unsafe timer, HPET, service, Defender, update, or driver hacks.")
+    {
+        Controls.AddRange(new Control[] { _gameMode, _ultimate, _dvr, _hags, _mouse, _gameBar, _info });
+        AddButton("Apply selected optimizations", 24, 425, 220, Apply);
+        AddButton("Restore previous settings", 254, 425, 200, Restore);
+        WriteLog("Safe gaming options loaded. Nothing is changed until Apply is clicked.");
+        WriteLog("HAGS is hardware-dependent; if performance worsens, uncheck it and apply or restore your backup.");
     }
+
     private async void Apply()
     {
+        if (_busy) return;
+        _busy = true;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_backup)!);
             var data = new GamingBackup { ActivePlan = await RunCommand("powercfg.exe", "/getactivescheme") };
-            data.Values.Add(CaptureValue(@"Software\Microsoft\GameBar", "AutoGameModeEnabled"));
-            data.Values.Add(CaptureValue(@"Software\Microsoft\GameBar", "AllowAutoGameMode"));
-            data.Values.Add(CaptureValue(@"System\GameConfigStore", "GameDVR_Enabled"));
-            data.Values.Add(CaptureValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"));
-            File.WriteAllText(_backup, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
-            if (_gameMode.Checked)
+            foreach (var item in new[]
             {
-                SetValue(@"Software\Microsoft\GameBar", "AutoGameModeEnabled", 1);
-                SetValue(@"Software\Microsoft\GameBar", "AllowAutoGameMode", 1);
-                WriteLog("Windows Game Mode enabled.");
+                CaptureValue(@"Software\Microsoft\GameBar", "AutoGameModeEnabled"),
+                CaptureValue(@"Software\Microsoft\GameBar", "AllowAutoGameMode"),
+                CaptureValue(@"System\GameConfigStore", "GameDVR_Enabled"),
+                CaptureValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"),
+                CaptureValue(@"System\GameConfigStore", "GameDVR_FSEBehaviorMode"),
+                CaptureValue(@"System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode"),
+                CaptureValue(@"System\GameConfigStore", "GameDVR_DXGIHonorFSEWindowsCompatible"),
+                CaptureValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "HistoricalCaptureEnabled"),
+                CaptureValue(@"Software\Microsoft\Windows\Dwm", "OverlayTestMode"),
+                CaptureValue(@"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects", "VisualFXSetting"),
+                CaptureValue(@"Control Panel\Mouse", "MouseSpeed"),
+                CaptureValue(@"Control Panel\Mouse", "MouseThreshold1"),
+                CaptureValue(@"Control Panel\Mouse", "MouseThreshold2")
+            }) data.Values.Add(item);
+            File.WriteAllText(_backup, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+            WriteLog("Backup saved before applying any changes: " + _backup);
+
+            if (_gameMode.Checked || _gameBar.Checked)
+            {
+                if (_gameMode.Checked) SetValue(@"Software\Microsoft\GameBar", "AutoGameModeEnabled", 1);
+                if (_gameBar.Checked) SetValue(@"Software\Microsoft\GameBar", "AllowAutoGameMode", 1);
+                WriteLog("Windows automatic Game Mode settings enabled.");
             }
             if (_dvr.Checked)
             {
                 SetValue(@"System\GameConfigStore", "GameDVR_Enabled", 0);
                 SetValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0);
-                WriteLog("Background Game DVR capture disabled; Game Bar itself is not removed.");
+                SetValue(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", "HistoricalCaptureEnabled", 0);
+                WriteLog("Background Game DVR recording disabled. Game Bar is not uninstalled.");
+            }
+            if (_hags.Checked)
+            {
+                // Windows GraphicsDrivers HwSchMode: 2 requests HAGS enabled; hardware/driver support is required.
+                SetValue(@"Software\Microsoft\Windows\CurrentVersion\GraphicsDrivers", "HwSchMode", 2);
+                WriteLog("HAGS enable request written. Windows may ignore it on unsupported hardware; restart required.");
+            }
+            if (_mouse.Checked)
+            {
+                SetStringValue(@"Control Panel\Mouse", "MouseSpeed", "0");
+                SetStringValue(@"Control Panel\Mouse", "MouseThreshold1", "0");
+                SetStringValue(@"Control Panel\Mouse", "MouseThreshold2", "0");
+                WriteLog("Windows mouse acceleration disabled for consistent pointer input.");
             }
             if (_ultimate.Checked)
             {
@@ -1213,14 +1254,23 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
                     guid = createdMatch.Groups[1].Value;
                 }
                 await RunCommand("powercfg.exe", "/setactive", guid);
-                WriteLog("Ultimate Performance power plan activated. It can increase power consumption.");
+                WriteLog("Ultimate Performance power plan activated. Monitor temperatures and power use.");
             }
-            WriteLog("Gaming profile applied. Sign out or restart if a setting does not take effect immediately.");
+            WriteLog("Gaming optimizations applied. Restart Windows for HAGS and other pending graphics changes.");
+            MessageBox.Show(this, "Gaming profile applied.\\n\\nA restart is recommended, especially for HAGS. Performance varies by hardware and game. If anything behaves worse, use Restore previous settings.", "Gaming optimization complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-        catch (Exception ex) { WriteLog("Apply failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Gaming profile", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex)
+        {
+            WriteLog("Apply failed: " + ex);
+            MessageBox.Show(this, ex.Message, "Gaming profile", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally { _busy = false; }
     }
+
     private async void Restore()
     {
+        if (_busy) return;
+        _busy = true;
         try
         {
             if (!File.Exists(_backup)) { MessageBox.Show(this, "No saved gaming backup exists."); return; }
@@ -1228,17 +1278,29 @@ internal sealed class GamingOptimizationForm : AdvancedToolForm
             foreach (var value in data.Values) RestoreValue(value);
             var match = System.Text.RegularExpressions.Regex.Match(data.ActivePlan, @"([a-fA-F0-9-]{36})");
             if (match.Success) await RunCommand("powercfg.exe", "/setactive", match.Groups[1].Value);
-            WriteLog("Previous registry settings and power plan restored.");
+            WriteLog("Previous registry settings and active power plan restored. Restart Windows if HAGS was changed.");
+            MessageBox.Show(this, "Previous gaming settings and power plan restored. Restart Windows if HAGS was changed.", "Restore complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-        catch (Exception ex) { WriteLog("Restore failed: " + ex.Message); MessageBox.Show(this, ex.Message, "Restore settings", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex) { WriteLog("Restore failed: " + ex); MessageBox.Show(this, ex.Message, "Restore settings", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { _busy = false; }
     }
+
     private static SavedValue CaptureValue(string path, string name)
     {
         using var key = Registry.CurrentUser.OpenSubKey(path);
         var exists = key?.GetValueNames().Contains(name) == true;
-        return new SavedValue { Path = path, Name = name, Exists = exists, Value = exists ? Convert.ToString(key!.GetValue(name)) : "", Kind = exists ? key!.GetValueKind(name).ToString() : "DWord" };
+        return new SavedValue { Path = path, Name = name, Exists = exists, Value = exists ? Convert.ToString(key!.GetValue(name)) ?? "" : "", Kind = exists ? key!.GetValueKind(name).ToString() : "DWord" };
     }
-    private static void SetValue(string path, string name, int value) { using var key = Registry.CurrentUser.CreateSubKey(path, true); key?.SetValue(name, value, RegistryValueKind.DWord); }
+    private static void SetValue(string path, string name, int value)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(path, true) ?? throw new UnauthorizedAccessException("Could not open registry key: " + path);
+        key.SetValue(name, value, RegistryValueKind.DWord);
+    }
+    private static void SetStringValue(string path, string name, string value)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(path, true) ?? throw new UnauthorizedAccessException("Could not open registry key: " + path);
+        key.SetValue(name, value, RegistryValueKind.String);
+    }
     private static void RestoreValue(SavedValue v)
     {
         using var key = Registry.CurrentUser.CreateSubKey(v.Path, true);
