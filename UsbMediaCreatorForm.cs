@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Globalization;
 using Microsoft.Win32.SafeHandles;
 
 namespace UltimateCleaningUtility;
@@ -90,6 +91,18 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         if (string.IsNullOrWhiteSpace(_isoPath) || !File.Exists(_isoPath)) { MessageBox.Show(this, "Choose a valid ISO image first."); return; }
         var file = new FileInfo(_isoPath); bool raw = _mode.SelectedIndex == 1;
         if (file.Length > disk.Size) { MessageBox.Show(this, "The ISO is larger than the USB drive."); return; }
+        WindowsSetupOptions? setupOptions = null;
+        if (!raw)
+        {
+            using var optionsForm = new WindowsSetupOptionsForm();
+            if (optionsForm.ShowDialog(this) != DialogResult.OK) { WriteLog("Windows setup customization cancelled."); return; }
+            setupOptions = optionsForm.Options;
+            if (setupOptions.BypassHardware && !IsAdministrator())
+            {
+                MessageBox.Show(this, "Hardware requirement bypass modifies the Windows PE image and requires running this utility as Administrator. No USB data has been changed.", "Administrator required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+        }
         string detail = $"Disk {disk.Number}: {disk.Name}\nCapacity: {Fmt(disk.Size)}\nSerial: {disk.Serial}\nImage: {file.Name} ({Fmt(file.Length)})\nMode: {(raw ? "Raw image" : "Windows installer")}";
         if (MessageBox.Show(this, "THIS OPERATION ERASES THE ENTIRE USB DRIVE.\n\n" + detail + "\n\nContinue only if this is the correct drive.", "Confirm USB erase", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         string confirm = Microsoft.VisualBasic.Interaction.InputBox($"Type ERASE {disk.Number} to confirm.", "Final confirmation", "");
@@ -101,7 +114,7 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             if (check == null || check.BusType != "USB" || check.Boot || check.System || check.ReadOnly || check.Offline || check.Size != disk.Size || check.Serial != disk.Serial)
                 throw new InvalidOperationException("USB identity changed or disk is no longer eligible. Nothing was erased. Refresh and retry.");
             if (raw) await Task.Run(() => WriteRaw(disk, _isoPath, _verify.Checked));
-            else await CreateWindows(disk, _isoPath);
+            else await CreateWindows(disk, _isoPath, setupOptions ?? new WindowsSetupOptions());
             _progress.Value = 100; _status.Text = "Completed. Safely eject the USB before unplugging.";
             WriteLog("Bootable USB creation completed.");
             MessageBox.Show(this, "Bootable USB creation completed. Safely eject before unplugging.", "USB ready", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -111,7 +124,7 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
         finally { Busy(false); }
     }
 
-    private async Task CreateWindows(UsbDisk disk, string iso)
+    private async Task CreateWindows(UsbDisk disk, string iso, WindowsSetupOptions options)
     {
         string? mounted = null; string temp = Path.Combine(Path.GetTempPath(), "ucusb-" + Guid.NewGuid().ToString("N") + ".txt");
         try
@@ -134,7 +147,9 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             if (large != null) { args.Add("/XF"); args.Add("install.wim"); }
             int rc = await Tool("robocopy.exe", args, WriteLog); if (rc >= 8) throw new InvalidOperationException("Robocopy failed with exit code " + rc);
             if (large != null) { WriteLog("Splitting install.wim into FAT32-compatible parts using DISM..."); await Tool("dism.exe", new[] { "/Split-Image", "/ImageFile:" + large, "/SWMFile:" + Path.Combine(dst, "sources", "install.swm"), "/FileSize:3800", "/CheckIntegrity" }, WriteLog); if (!File.Exists(Path.Combine(dst, "sources", "install.swm"))) throw new InvalidOperationException("DISM did not create install.swm."); }
-            _progress.Value = 95; WriteLog("Windows setup files copied.");
+            _progress.Value = 82; WriteLog("Windows setup files copied.");
+            await ApplyWindowsSetupOptions(dst, options);
+            _progress.Value = 96; WriteLog("Windows installation customizations applied.");
         }
         finally
         {
@@ -219,3 +234,238 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern SafeFileHandle OpenDevice(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
     private sealed record UsbDisk(int Number, string Name, string Serial, long Size, string Partition, string BusType = "USB", bool Boot = false, bool System = false, bool ReadOnly = false, bool Offline = false) { public override string ToString() => $"Disk {Number} — {Name} ({Fmt(Size)})"; }
 }
+
+
+    private static bool IsAdministrator() =>
+        new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
+            .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+
+    private async Task ApplyWindowsSetupOptions(string usbRoot, WindowsSetupOptions options)
+    {
+        if (options.HasAny)
+        {
+            await File.WriteAllTextAsync(Path.Combine(usbRoot, "autounattend.xml"), BuildUnattend(options), new System.Text.UTF8Encoding(false));
+            WriteLog("Created Windows Setup answer file (autounattend.xml).");
+        }
+        if (options.BypassHardware)
+            await InjectHardwareBypassAsync(Path.Combine(usbRoot, "sources", "boot.wim"));
+        if (options.QualityOfLife)
+            await InstallQualityOfLifeScriptAsync(usbRoot);
+    }
+
+    private static string BuildUnattend(WindowsSetupOptions o)
+    {
+        string user = System.Security.SecurityElement.Escape(o.Username) ?? "User";
+        string culture = CultureInfo.CurrentCulture.Name;
+        if (string.IsNullOrWhiteSpace(culture)) culture = "en-US";
+        string bitlocker = o.DisableBitLocker
+            ? """
+              <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <RunSynchronous>
+                  <RunSynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Description>Prevent automatic device encryption</Description>
+                    <Path>reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\BitLocker" /v PreventDeviceEncryption /t REG_DWORD /d 1 /f</Path>
+                    <WillReboot>Never</WillReboot>
+                  </RunSynchronousCommand>
+                </RunSynchronous>
+              </component>
+              """
+            : "";
+        string online = o.BypassOnlineAccount ? "<HideOnlineAccountScreens>true</HideOnlineAccountScreens><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>" : "";
+        string privacy = o.SkipPrivacyQuestions ? "<ProtectYourPC>3</ProtectYourPC>" : "";
+        string local = o.CreateLocalAccount
+            ? $"""
+              <UserAccounts>
+                <LocalAccounts>
+                  <LocalAccount wcm:action="add">
+                    <Name>{user}</Name><Group>Administrators</Group><DisplayName>{user}</DisplayName>
+                    <Description>Local account created by EXE USB Creator</Description>
+                    <Password><Value></Value><PlainText>true</PlainText></Password>
+                  </LocalAccount>
+                </LocalAccounts>
+              </UserAccounts>
+              """
+            : "";
+        string regional = o.CopyRegionalSettings
+            ? $"""
+              <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <InputLocale>0409:00000409</InputLocale><SystemLocale>{culture}</SystemLocale>
+                <UILanguage>{culture}</UILanguage><UserLocale>{culture}</UserLocale>
+              </component>
+              """
+            : "";
+        return $"""
+        <?xml version="1.0" encoding="utf-8"?>
+        <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <settings pass="windowsPE">
+            <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+              <UserData><AcceptEula>true</AcceptEula><ProductKey><Key></Key></ProductKey></UserData>
+            </component>
+          </settings>
+          <settings pass="specialize">
+            {bitlocker}
+          </settings>
+          <settings pass="oobeSystem">
+            {regional}
+            <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+              <OOBE><HideEULAPage>true</HideEULAPage>{online}{privacy}</OOBE>
+              {local}
+            </component>
+          </settings>
+        </unattend>
+        """;
+    }
+
+    private async Task InjectHardwareBypassAsync(string bootWim)
+    {
+        if (!File.Exists(bootWim))
+            throw new FileNotFoundException("This Windows ISO has no sources\\boot.wim; the setup requirement bypass cannot be applied.");
+        string mount = Path.Combine(Path.GetTempPath(), "EXE_USB_WIM_" + Guid.NewGuid().ToString("N"));
+        string hive = "EXE_USB_SYSTEM_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        Directory.CreateDirectory(mount);
+        bool mounted = false, loaded = false;
+        try
+        {
+            WriteLog("Mounting Windows PE image to add setup compatibility flags...");
+            await RunProcessAsync("dism.exe", new[] { "/Mount-Wim", "/WimFile:" + bootWim, "/Index:2", "/MountDir:" + mount }, WriteLog);
+            mounted = true;
+            string systemHive = Path.Combine(mount, "Windows", "System32", "config", "SYSTEM");
+            await RunProcessAsync("reg.exe", new[] { "load", "HKLM\\" + hive, systemHive }, WriteLog);
+            loaded = true;
+            string key = "HKLM\\" + hive + "\\ControlSet001\\Setup\\LabConfig";
+            foreach (string flag in new[] { "BypassTPMCheck", "BypassSecureBootCheck", "BypassRAMCheck" })
+                await RunProcessAsync("reg.exe", new[] { "add", key, "/v", flag, "/t", "REG_DWORD", "/d", "1", "/f" }, WriteLog);
+            await RunProcessAsync("reg.exe", new[] { "unload", "HKLM\\" + hive }, WriteLog);
+            loaded = false;
+            await RunProcessAsync("dism.exe", new[] { "/Unmount-Wim", "/MountDir:" + mount, "/Commit" }, WriteLog);
+            mounted = false;
+            WriteLog("TPM 2.0, Secure Boot and 4 GB RAM bypass flags committed to Windows PE.");
+        }
+        finally
+        {
+            if (loaded) try { await RunProcessAsync("reg.exe", new[] { "unload", "HKLM\\" + hive }, WriteLog); } catch { }
+            if (mounted) try { await RunProcessAsync("dism.exe", new[] { "/Unmount-Wim", "/MountDir:" + mount, "/Discard" }, WriteLog); } catch { }
+            try { if (Directory.Exists(mount)) Directory.Delete(mount, true); } catch { }
+        }
+    }
+
+    private async Task InstallQualityOfLifeScriptAsync(string usbRoot)
+    {
+        string scripts = Path.Combine(usbRoot, "$OEM$", "$$", "Setup", "Scripts");
+        Directory.CreateDirectory(scripts);
+        string ps = """
+        $ErrorActionPreference = 'Continue'
+        $log = Join-Path $env:WINDIR 'Temp\EXE-SetupTweaks.log'
+        function Set-Dword($path, $name, $value) {
+          if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+          New-ItemProperty -Path $path -Name $name -PropertyType DWord -Value $value -Force | Out-Null
+        }
+        try {
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive' 'DisableFileSyncNGSC' 1
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' 'DisableWindowsConsumerFeatures' 1
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds' 'EnableFeeds' 0
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' 'HideFirstRunExperience' 1
+          Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot' 'TurnOffWindowsCopilot' 1
+          $provisioned = Get-AppxProvisionedPackage -Online
+          foreach ($pattern in @('Microsoft.OutlookForWindows','Microsoft.Copilot')) {
+            $provisioned | Where-Object { $_.DisplayName -eq $pattern } | ForEach-Object {
+              Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction Continue | Out-Null
+            }
+          }
+          $defaultHive = Join-Path $env:SystemDrive 'Users\Default\NTUSER.DAT'
+          if (Test-Path $defaultHive) {
+            & reg.exe load HKU\EXE_DEFAULT $defaultHive | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              $cdm = 'Registry::HKEY_USERS\EXE_DEFAULT\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+              foreach ($n in @('SubscribedContent-338388Enabled','SubscribedContent-338389Enabled','SubscribedContent-353694Enabled','SubscribedContent-353696Enabled','SystemPaneSuggestionsEnabled','SilentInstalledAppsEnabled')) {
+                New-ItemProperty -Path $cdm -Name $n -PropertyType DWord -Value 0 -Force | Out-Null
+              }
+              $search = 'Registry::HKEY_USERS\EXE_DEFAULT\Software\Microsoft\Windows\CurrentVersion\Search'
+              New-ItemProperty -Path $search -Name 'SearchboxTaskbarMode' -PropertyType DWord -Value 1 -Force | Out-Null
+              $classic = 'Registry::HKEY_USERS\EXE_DEFAULT\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32'
+              New-Item -Path $classic -Force | Out-Null
+              Set-ItemProperty -Path $classic -Name '(default)' -Value ''
+              & reg.exe unload HKU\EXE_DEFAULT | Out-Null
+            }
+          }
+          "EXE setup QoL actions completed: $(Get-Date -Format o)" | Out-File $log -Append
+        } catch { ($_ | Out-String) | Out-File $log -Append }
+        """;
+        await File.WriteAllTextAsync(Path.Combine(scripts, "EXE-SetupTweaks.ps1"), ps, new System.Text.UTF8Encoding(false));
+        string cmd = "@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%WINDIR%\\Setup\\Scripts\\EXE-SetupTweaks.ps1\"\r\nexit /b 0\r\n";
+        await File.WriteAllTextAsync(Path.Combine(scripts, "SetupComplete.cmd"), cmd, new System.Text.ASCIIEncoding());
+        WriteLog("Added optional QoL setup script: OneDrive policy, Outlook/Copilot provisioned-app removal, consumer suggestions, news, Edge first-run, taskbar/search and classic context menu defaults.");
+    }
+
+    private static async Task RunProcessAsync(string file, IEnumerable<string> args, Action<string> log)
+    {
+        using var p = new Process { StartInfo = new ProcessStartInfo { FileName = file, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
+        foreach (var arg in args) p.StartInfo.ArgumentList.Add(arg);
+        p.Start();
+        var stdout = Pump(p.StandardOutput, log);
+        var stderr = Pump(p.StandardError, log);
+        await p.WaitForExitAsync();
+        await Task.WhenAll(stdout, stderr);
+        if (p.ExitCode != 0) throw new InvalidOperationException(file + " failed with exit code " + p.ExitCode);
+    }
+
+    private sealed class WindowsSetupOptions
+    {
+        public bool BypassHardware { get; set; }
+        public bool BypassOnlineAccount { get; set; }
+        public bool CreateLocalAccount { get; set; }
+        public string Username { get; set; } = "User";
+        public bool CopyRegionalSettings { get; set; }
+        public bool SkipPrivacyQuestions { get; set; }
+        public bool DisableBitLocker { get; set; }
+        public bool QualityOfLife { get; set; }
+        public bool HasAny => BypassHardware || BypassOnlineAccount || CreateLocalAccount || CopyRegionalSettings || SkipPrivacyQuestions || DisableBitLocker;
+    }
+
+    private sealed class WindowsSetupOptionsForm : Form
+    {
+        private readonly CheckBox _hardware = new() { Text = "Remove requirement for 4GB+ RAM, Secure Boot and TPM 2.0", AutoSize = true };
+        private readonly CheckBox _online = new() { Text = "Remove requirement for an online Microsoft account", AutoSize = true };
+        private readonly CheckBox _local = new() { Text = "Create a local administrator account", AutoSize = true };
+        private readonly TextBox _username = new() { Text = "User", Width = 240 };
+        private readonly CheckBox _regional = new() { Text = "Use this PC's regional settings", AutoSize = true };
+        private readonly CheckBox _privacy = new() { Text = "Disable data collection questions (privacy prompts)", AutoSize = true };
+        private readonly CheckBox _bitlocker = new() { Text = "Disable automatic BitLocker device encryption", AutoSize = true };
+        private readonly CheckBox _qol = new() { Text = "Apply Rufus-style Quality of Life improvements", AutoSize = true };
+        public WindowsSetupOptions Options { get; private set; } = new();
+
+        public WindowsSetupOptionsForm()
+        {
+            Text = "Windows User Experience — EXE USB Creator";
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false;
+            ClientSize = new Size(690, 570);
+            BackColor = SystemColors.Control;
+            Controls.Add(new Label { Text = "Customize Windows installation", Font = new Font("Segoe UI", 15, FontStyle.Bold), Location = new Point(24, 20), AutoSize = true });
+            Controls.Add(new Label { Text = "Choose optional setup bypasses and first-run preferences. Nothing is selected automatically.", Location = new Point(24, 58), Size = new Size(640, 38), ForeColor = SystemColors.GrayText });
+            int y = 112;
+            foreach (var cb in new[] { _hardware, _online, _local, _regional, _privacy, _bitlocker, _qol })
+            { cb.Location = new Point(28, y); Controls.Add(cb); y += 43; }
+            var usernameLabel = new Label { Text = "Local account username:", Location = new Point(52, 240), AutoSize = true };
+            _username.Location = new Point(230, 236);
+            _local.CheckedChanged += (_, _) => _username.Enabled = _local.Checked;
+            _username.Enabled = false;
+            var note = new Label { Text = "Hardware bypass modifies boot.wim and needs Administrator. QoL actions run once after setup. BitLocker protection is recommended for portable devices.", Location = new Point(28, 430), Size = new Size(630, 64), ForeColor = Color.DarkGoldenrod };
+            var ok = new Button { Text = "Continue", DialogResult = DialogResult.OK, Location = new Point(430, 510), Size = new Size(105, 34) };
+            var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(548, 510), Size = new Size(105, 34) };
+            Controls.AddRange(new Control[] { usernameLabel, _username, note, ok, cancel });
+            AcceptButton = ok; CancelButton = cancel;
+            FormClosing += (_, e) =>
+            {
+                if (DialogResult != DialogResult.OK) return;
+                if (_local.Checked && (string.IsNullOrWhiteSpace(_username.Text) || _username.Text.Length > 20 || _username.Text.Any(ch => !(char.IsLetterOrDigit(ch) || ch is '-' or '_'))))
+                {
+                    MessageBox.Show(this, "Enter a local username of 1–20 letters, numbers, hyphens or underscores.", "Invalid username", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    e.Cancel = true; DialogResult = DialogResult.None; return;
+                }
+                Options = new WindowsSetupOptions { BypassHardware = _hardware.Checked, BypassOnlineAccount = _online.Checked, CreateLocalAccount = _local.Checked, Username = _username.Text.Trim(), CopyRegionalSettings = _regional.Checked, SkipPrivacyQuestions = _privacy.Checked, DisableBitLocker = _bitlocker.Checked, QualityOfLife = _qol.Checked };
+            };
+        }
+    }
