@@ -43,12 +43,14 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
     private static Label LabelAt(string t, int x, int y) => new() { Text = t, Location = new Point(x, y), AutoSize = true, Font = new Font("Segoe UI", 8, FontStyle.Bold), ForeColor = Color.Gray };
     private void UpdateMode() { bool raw = _mode.SelectedIndex == 1; _scheme.Enabled = !raw; _verify.Enabled = raw; _hint.Text = raw ? "Byte-for-byte writing for hybrid Linux and recovery ISOs that support USB/DD mode." : "Creates a FAT32 Windows installer and splits large install.wim files for UEFI compatibility."; }
 
-    private void RefreshDisks()
+    private async void RefreshDisks()
     {
-        if (_busy) return;
+        if (_busy || !_refresh.Enabled) return;
+        _refresh.Enabled = false;
         try
         {
-            string json = Ps("Get-Disk | Where-Object { $_.BusType -eq 'USB' -and -not $_.IsBoot -and -not $_.IsSystem } | Select-Object Number,FriendlyName,SerialNumber,BusType,Size,PartitionStyle,IsBoot,IsSystem,IsReadOnly,IsOffline | ConvertTo-Json -Compress");
+            WriteLog("Scanning removable USB drives...");
+            string json = await Task.Run(() => Ps("Get-Disk | Where-Object { $_.BusType -eq 'USB' -and -not $_.IsBoot -and -not $_.IsSystem } | Select-Object Number,FriendlyName,SerialNumber,BusType,Size,PartitionStyle,IsBoot,IsSystem,IsReadOnly,IsOffline | ConvertTo-Json -Compress"));
             _disk.Items.Clear();
             if (!string.IsNullOrWhiteSpace(json))
             {
@@ -65,7 +67,8 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             if (_disk.Items.Count > 0) _disk.SelectedIndex = 0; else _info.Text = "No eligible USB drive detected. Connect one and refresh.";
             WriteLog("USB scan complete. Eligible drives: " + _disk.Items.Count + ".");
         }
-        catch (Exception ex) { _info.Text = "USB detection failed: " + ex.Message; WriteLog(ex.Message); }
+        catch (Exception ex) { _info.Text = "USB detection failed: " + ex.Message; WriteLog(ex.ToString()); }
+        finally { if (!IsDisposed) _refresh.Enabled = !_busy; }
     }
 
     private void UpdateDisk() { if (_disk.SelectedItem is UsbDisk d) _info.Text = $"Disk {d.Number} • {d.Name} • {Fmt(d.Size)} • {d.Partition} • Serial: {d.Serial}"; }
