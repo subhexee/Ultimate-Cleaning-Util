@@ -22,21 +22,16 @@ internal static partial class CleanupEngine
             progress, token);
     }
 
-    public static async Task OptimizeAllFixedDrivesAsync(IProgress<string> progress, CancellationToken token)
+    public static Task OptimizeAllFixedDrivesAsync(IProgress<string> progress, CancellationToken token)
     {
-        const string script = "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_LogicalDisk -Filter \"DriveType=3\" | Select-Object -ExpandProperty DeviceID";
-        var drives = new List<string>();
-        var output = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        var capture = new Progress<string>(line => output.Enqueue(line));
-        await RunProcessAsync("powershell.exe", new[] { "-NoProfile", "-NonInteractive", "-Command", script }, capture, token);
-        drives.AddRange(output.Select(x => x.Trim()).Where(x => System.Text.RegularExpressions.Regex.IsMatch(x, "^[A-Z]:$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase));
-        if (drives.Count == 0) { progress.Report("No fixed local volumes were found."); return; }
-        foreach (var drive in drives)
-        {
-            token.ThrowIfCancellationRequested();
-            progress.Report($"Optimizing fixed drive {drive}; Windows chooses TRIM or HDD optimization as appropriate.");
-            await RunProcessAsync("defrag.exe", new[] { drive, "/O", "/U", "/V" }, progress, token);
-        }
+        const string script = "$ErrorActionPreference = 'Stop'; " +
+            "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { " +
+            "$drive = $_.DeviceID; Write-Output ('Optimizing fixed drive ' + $drive + '...'); " +
+            "& defrag.exe $drive /O /U /V; if ($LASTEXITCODE -ne 0) { throw ('Optimize Drives failed for ' + $drive + ' with exit code ' + $LASTEXITCODE) } " +
+            "}; Write-Output 'All detected fixed drives processed.'";
+        return RunProcessAsync("powershell.exe",
+            new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script },
+            progress, token);
     }
 
     public static Task ScanFilesystemAsync(IProgress<string> progress, CancellationToken token)
