@@ -278,6 +278,17 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
               """
             : "";
         string online = o.BypassOnlineAccount ? "<HideOnlineAccountScreens>true</HideOnlineAccountScreens><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>" : "";
+        string specialize = o.BypassOnlineAccount
+            ? """
+              <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <RunSynchronous><RunSynchronousCommand wcm:action="add">
+                  <Order>1</Order><Description>Enable offline account setup</Description>
+                  <Path>reg.exe add "HKLM\Software\Microsoft\Windows\CurrentVersion\OOBE" /v BypassNRO /t REG_DWORD /d 1 /f</Path>
+                  <WillReboot>Never</WillReboot>
+                </RunSynchronousCommand></RunSynchronous>
+              </component>
+              """
+            : "";
         string privacy = o.SkipPrivacyQuestions ? "<ProtectYourPC>3</ProtectYourPC>" : "";
         string local = o.CreateLocalAccount
             ? $"""
@@ -333,6 +344,9 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
               <UserData><AcceptEula>true</AcceptEula><ProductKey><Key></Key></ProductKey></UserData>
             </component>
+          </settings>
+          <settings pass="specialize">
+            {specialize}
           </settings>
           <settings pass="oobeSystem">
             {regional}
