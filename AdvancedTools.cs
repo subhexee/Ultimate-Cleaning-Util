@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.Win32;
 using Microsoft.VisualBasic.FileIO;
@@ -1327,6 +1328,7 @@ internal sealed class DebloatForm : AdvancedToolForm
         _selectAll = AddButton("Select all", 24, 700, 120, ToggleAll);
         _apply = AddButton("Apply selected tweaks", 154, 700, 190, ApplySelected);
         _restore = AddButton("Restore latest backup", 354, 700, 190, RestoreLatest);
+        AddButton("Remove bloat apps", 554, 700, 170, () => { using var form = new BloatRemovalForm(); form.ShowDialog(this); });
 
         _all.AddRange(new[]
         {
@@ -1527,4 +1529,183 @@ internal sealed class DebloatForm : AdvancedToolForm
         public override string ToString() => Name + " — " + Description;
     }
     private sealed class SavedTweak { public string Path { get; set; } = ""; public string Name { get; set; } = ""; public bool Exists { get; set; } public string Value { get; set; } = ""; public string Kind { get; set; } = "DWord"; }
+}
+
+
+internal sealed class BloatRemovalForm : AdvancedToolForm
+{
+    private readonly CheckedListBox _apps = new()
+    {
+        Location = new Point(24, 108), Size = new Size(1050, 610),
+        Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+        CheckOnClick = true, IntegralHeight = false
+    };
+    private readonly Label _warning = new()
+    {
+        Location = new Point(24, 724), Size = new Size(1050, 48),
+        ForeColor = Color.FromArgb(230, 178, 92),
+        Text = "Destructive uninstall. Back up/sync personal data first. Edge removal is experimental and may affect Windows features or apps that rely on Edge WebView; do not remove WebView2."
+    };
+    private readonly Button _remove;
+    private readonly Button _selectAll;
+    private bool _all;
+
+    private sealed record BloatApp(string Name, string Kind, string Target, string Description)
+    {
+        public override string ToString() => Name + " — " + Description;
+    }
+
+    public BloatRemovalForm() : base("Bloat App Removal", "Select only the apps you want removed. AppX apps are removed for the current user; OneDrive and Edge use their vendor uninstallers.")
+    {
+        var entries = new[]
+        {
+            new BloatApp("Microsoft Copilot", "appx", "Microsoft.Copilot", "Removes the consumer Copilot app; does not remove Windows AI components."),
+            new BloatApp("Microsoft OneDrive", "onedrive", "", "Runs the installed OneDrive uninstaller; files in your OneDrive folder are not deleted."),
+            new BloatApp("Microsoft Edge (FORCE)", "edge", "", "Advanced force uninstall. May be blocked or reversed by Windows updates; WebView2 is left untouched."),
+            new BloatApp("Microsoft Clipchamp", "appx", "Clipchamp.Clipchamp", "Video editor."),
+            new BloatApp("Microsoft News", "appx", "Microsoft.BingNews", "News app."),
+            new BloatApp("Microsoft Weather", "appx", "Microsoft.BingWeather", "Weather app."),
+            new BloatApp("Microsoft Solitaire Collection", "appx", "Microsoft.MicrosoftSolitaireCollection", "Games bundle."),
+            new BloatApp("Get Help", "appx", "Microsoft.GetHelp", "Support app."),
+            new BloatApp("Get Started / Tips", "appx", "Microsoft.Getstarted", "Windows tips app."),
+            new BloatApp("Feedback Hub", "appx", "Microsoft.WindowsFeedbackHub", "Feedback app."),
+            new BloatApp("Microsoft Teams (personal)", "appx", "MSTeams", "Personal Teams client; work/school installs may be separate."),
+            new BloatApp("Phone Link", "appx", "Microsoft.YourPhone", "Phone integration app."),
+            new BloatApp("Power Automate", "appx", "Microsoft.PowerAutomateDesktop", "Desktop automation app."),
+            new BloatApp("Dev Home", "appx", "Microsoft.Windows.DevHome", "Developer dashboard."),
+            new BloatApp("3D Viewer", "appx", "Microsoft.Microsoft3DViewer", "3D model viewer."),
+            new BloatApp("Paint 3D", "appx", "Microsoft.MSPaint", "Legacy 3D Paint app (where separately installed)."),
+            new BloatApp("Mixed Reality Portal", "appx", "Microsoft.MixedReality.Portal", "Mixed reality app."),
+            new BloatApp("People", "appx", "Microsoft.People", "Contacts app."),
+            new BloatApp("Maps", "appx", "Microsoft.WindowsMaps", "Offline maps app."),
+            new BloatApp("Camera", "appx", "Microsoft.WindowsCamera", "Camera app; remove only if unused."),
+            new BloatApp("Voice Recorder / Sound Recorder", "appx", "Microsoft.WindowsSoundRecorder", "Built-in recorder."),
+            new BloatApp("Alarms & Clock", "appx", "Microsoft.WindowsAlarms", "Clock and alarms app."),
+            new BloatApp("Microsoft To Do", "appx", "Microsoft.Todos", "Task list app."),
+            new BloatApp("Sticky Notes", "appx", "Microsoft.MicrosoftStickyNotes", "Notes app."),
+            new BloatApp("3D Paint / legacy 3D content", "appx", "Microsoft.3DBuilder", "Legacy 3D Builder app."),
+            new BloatApp("Xbox Console Companion (legacy)", "appx", "Microsoft.XboxApp", "Legacy Xbox companion; modern Xbox services are not touched.")
+        };
+        foreach (var entry in entries) _apps.Items.Add(entry, false);
+        Controls.Add(_apps);
+        Controls.Add(_warning);
+        _selectAll = AddButton("Select all", 24, 790, 120, ToggleAll);
+        _remove = AddButton("Uninstall selected apps", 154, 790, 220, RemoveSelected);
+        WriteLog("No apps are preselected. System components, Microsoft Store, Edge WebView2, Defender, Windows Update, drivers and Xbox gaming services are intentionally excluded.");
+    }
+
+    private void ToggleAll()
+    {
+        _all = !_all;
+        for (int i = 0; i < _apps.Items.Count; i++) _apps.SetItemChecked(i, _all);
+        _selectAll.Text = _all ? "Clear all" : "Select all";
+    }
+
+    private async void RemoveSelected()
+    {
+        var selected = _apps.CheckedItems.Cast<BloatApp>().ToList();
+        if (selected.Count == 0) { MessageBox.Show(this, "Select at least one app."); return; }
+        bool includesEdge = selected.Any(x => x.Kind == "edge");
+        string prompt = "Uninstall " + selected.Count + " selected app(s)?\n\n" +
+            string.Join("\n", selected.Select(x => "• " + x.Name)) +
+            "\n\nThis removes apps for the current Windows user. App data/settings may be removed.";
+        if (includesEdge)
+            prompt += "\n\nWARNING: FORCE-REMOVING EDGE IS NOT RECOMMENDED. It can affect Windows features and dependent applications. Edge WebView2 will NOT be removed.";
+        if (MessageBox.Show(this, prompt, "Confirm bloat app removal", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        if (includesEdge && MessageBox.Show(this, "FINAL CONFIRMATION: Attempt to force-uninstall Microsoft Edge now? Windows may reinstall it. Continue only if you have another browser and recovery plan.", "Force remove Microsoft Edge", MessageBoxButtons.YesNo, MessageBoxIcon.Stop) != DialogResult.Yes) return;
+
+        _remove.Enabled = _selectAll.Enabled = false;
+        int success = 0, failed = 0;
+        try
+        {
+            bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+            if (!admin && selected.Any(x => x.Kind is "edge" or "onedrive"))
+                WriteLog("Not running elevated. OneDrive/Edge uninstallation may fail or request administrator approval.");
+            foreach (var app in selected)
+            {
+                try
+                {
+                    WriteLog("Removing " + app.Name + "...");
+                    if (app.Kind == "appx") await RemoveAppxAsync(app.Target);
+                    else if (app.Kind == "onedrive") await UninstallOneDriveAsync();
+                    else if (app.Kind == "edge") await UninstallEdgeAsync();
+                    success++;
+                    WriteLog("Removal command completed: " + app.Name);
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    WriteLog("FAILED: " + app.Name + " — " + ex.Message);
+                }
+            }
+            WriteLog("Removal finished. Completed: " + success + "; failed: " + failed + ". Restart Windows if requested by an uninstaller.");
+            MessageBox.Show(this, "Removal attempts completed.\n\nCompleted: " + success + "\nFailed: " + failed + "\n\nCheck the live log for details. Some Windows apps may be restored by feature updates.", "Bloat removal results", MessageBoxButtons.OK, failed > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
+        finally { _remove.Enabled = _selectAll.Enabled = true; }
+    }
+
+    private static async Task RemoveAppxAsync(string packageName)
+    {
+        string script = "$p = Get-AppxPackage -Name '" + packageName.Replace("'", "''") + "'; " +
+            "if (-not $p) { Write-Output 'Not installed for current user'; exit 0 }; " +
+            "if ($p.NonRemovable) { throw 'Windows marks this package as non-removable.' }; " +
+            "$p | Remove-AppxPackage -ErrorAction Stop; " +
+            "if (Get-AppxPackage -Name '" + packageName.Replace("'", "''") + "') { throw 'Package is still registered after removal.' }";
+        await RunPowerShellAsync(script);
+    }
+
+    private static async Task UninstallOneDriveAsync()
+    {
+        string[] candidates =
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64", "OneDriveSetup.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "OneDriveSetup.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "OneDrive", "Update", "OneDriveSetup.exe")
+        };
+        string? setup = candidates.FirstOrDefault(File.Exists);
+        if (setup == null) throw new FileNotFoundException("Could not find OneDriveSetup.exe. Use Settings > Apps > Installed apps to uninstall OneDrive.");
+        try { await RunCommand("taskkill.exe", "/f", "/im", "OneDrive.exe"); } catch { }
+        await RunCommand(setup, "/uninstall");
+    }
+
+    private static async Task UninstallEdgeAsync()
+    {
+        var roots = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Edge", "Application")
+        };
+        var installers = roots.Where(Directory.Exists)
+            .SelectMany(root => Directory.GetDirectories(root).Select(dir => Path.Combine(dir, "Installer", "setup.exe")))
+            .Where(File.Exists).ToList();
+        string? setup = installers.FirstOrDefault();
+        if (setup == null) throw new FileNotFoundException("Could not find the Edge installer. Edge may be protected or installed in a different location.");
+        await RunCommand(setup, "--uninstall", "--system-level", "--verbose-logging", "--force-uninstall");
+    }
+
+    private static async Task RunPowerShellAsync(string script)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe", UseShellExecute = false,
+                RedirectStandardOutput = true, RedirectStandardError = true,
+                CreateNoWindow = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("-NoProfile");
+        process.StartInfo.ArgumentList.Add("-NonInteractive");
+        process.StartInfo.ArgumentList.Add("-ExecutionPolicy");
+        process.StartInfo.ArgumentList.Add("Bypass");
+        process.StartInfo.ArgumentList.Add("-Command");
+        process.StartInfo.ArgumentList.Add(script);
+        process.Start();
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        string output = (await stdout) + (await stderr);
+        if (process.ExitCode != 0) throw new InvalidOperationException(output);
+    }
 }
