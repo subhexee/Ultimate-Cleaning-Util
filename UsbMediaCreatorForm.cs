@@ -119,10 +119,13 @@ internal sealed class UsbMediaCreatorForm : AdvancedToolForm
             _progress.Value = 100; _status.Text = "Completed. Safely eject the USB before unplugging.";
             WriteLog("Bootable USB creation completed.");
             MessageBox.Show(this, "Bootable USB creation completed. Safely eject before unplugging.", "USB ready", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            RefreshDisks();
         }
-        catch (Exception ex) { _status.Text = "Creation failed. Review the live log."; WriteLog("FAILED: " + ex.Message); MessageBox.Show(this, ex.Message, "USB creation failed", MessageBoxButtons.OK, MessageBoxIcon.Error); RefreshDisks(); }
-        finally { Busy(false); }
+        catch (Exception ex) { _status.Text = "Creation failed. Review the live log."; WriteLog("FAILED: " + ex.Message); MessageBox.Show(this, ex.Message, "USB creation failed", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        finally
+        {
+            Busy(false);
+            if (!IsDisposed) RefreshDisks();
+        }
     }
 
     private async Task CreateWindows(UsbDisk disk, string iso, WindowsSetupOptions options)
