@@ -206,11 +206,26 @@ internal static partial class CleanupEngine
 
     public static Task ScanLargeFilesAsync(IProgress<string> progress, CancellationToken token) => Task.Run(() =>
     {
-        var roots = new[]
+        var candidates = new[]
         {
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp")
-        }.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            Path.GetTempPath()
+        }.Where(Directory.Exists)
+         .Select(Path.GetFullPath)
+         .Distinct(StringComparer.OrdinalIgnoreCase)
+         .ToArray();
+
+        // The normal user temp directory is already inside the user profile.
+        // Avoid scanning it twice, but retain it when TEMP is redirected elsewhere.
+        var roots = candidates.Where(candidate => !candidates.Any(parent =>
+        {
+            if (string.Equals(candidate, parent, StringComparison.OrdinalIgnoreCase)) return false;
+            var relative = Path.GetRelativePath(parent, candidate);
+            return !Path.IsPathRooted(relative)
+                && relative != "."
+                && relative != ".."
+                && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        })).ToArray();
         var found = new List<(string Path, long Size, DateTime Modified)>();
         foreach (var root in roots)
         {
