@@ -165,14 +165,16 @@ internal static partial class CleanupEngine
     public static Task CleanWindowsUpdateCacheAsync(IProgress<string> progress, CancellationToken token)
     {
         const string script = "$ErrorActionPreference = 'Stop'; " +
-            "$services = @('bits', 'wuauserv'); " +
-            "foreach ($name in $services) { try { Stop-Service -Name $name -Force -ErrorAction Stop; " +
-            "Write-Output ('Stopped service: ' + $name); } catch { Write-Output ('Could not stop ' + $name + ': ' + $_.Exception.Message); throw; } } " +
-            "try { $folder = Join-Path $env:windir 'SoftwareDistribution\\Download'; " +
+            "$services = @('bits', 'wuauserv'); $wasRunning = @{}; " +
+            "foreach ($name in $services) { $wasRunning[$name] = (Get-Service -Name $name -ErrorAction Stop).Status -eq 'Running'; } " +
+            "try { foreach ($name in $services) { if ($wasRunning[$name]) { Stop-Service -Name $name -Force -ErrorAction Stop; " +
+            "Write-Output ('Stopped service: ' + $name); } } " +
+            "$folder = Join-Path $env:windir 'SoftwareDistribution\\Download'; " +
             "if (Test-Path -LiteralPath $folder) { Get-ChildItem -LiteralPath $folder -Force | Remove-Item -Recurse -Force -ErrorAction Stop; " +
             "Write-Output 'Windows Update download cache cleared.'; } else { Write-Output 'Windows Update download cache folder not found.'; } } " +
-            "finally { foreach ($name in $services) { try { Start-Service -Name $name -ErrorAction Stop; " +
-            "Write-Output ('Started service: ' + $name); } catch { Write-Output ('WARNING: could not restart ' + $name + ': ' + $_.Exception.Message); } } }";
+            "finally { $restartFailed = $false; foreach ($name in $services) { if ($wasRunning[$name]) { try { Start-Service -Name $name -ErrorAction Stop; " +
+            "Write-Output ('Restarted service: ' + $name); } catch { $restartFailed = $true; Write-Output ('ERROR: could not restart ' + $name + ': ' + $_.Exception.Message); } } } " +
+            "if ($restartFailed) { throw 'One or more Windows Update services could not be restarted. Check the service status before retrying.'; } }";
         // Do not kill this PowerShell process mid-flight: its finally block must
         // restart BITS and Windows Update even if the user presses Cancel.
         token.ThrowIfCancellationRequested();
